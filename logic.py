@@ -11,9 +11,9 @@ from StreetAutomation import *
 
 if __name__ == '__main__' :
 
-    '''
-    Setup Lock object for package drop
-    '''
+	'''
+	Setup Lock object for package drop
+	'''
 	exPkgLck = lock("package", 11)
 
 	#set pin num variables
@@ -24,7 +24,7 @@ if __name__ == '__main__' :
 	'''
 	create gate object
 	'''
-	gate = gate("gate1", ["open" = oPIN, "close" = cPIN, "stop" = sPIN])
+	gate = gate("gate1", {"open": oPIN, "close": cPIN, "stop": sPIN})
 
 	'''
 	Setup database connection
@@ -32,32 +32,23 @@ if __name__ == '__main__' :
 	con = db_connect()
 	cur = con.cursor()
 
-	keypad = input("Enter Access Code")
+	while True:
 
-	accessLevel = searchCode(con,keypad)
+		keypad = input("Enter Access Code: ")
 
-	if accessLevel = "gate":
-		print("gate open")
-		#gate.open()
-		lock.open(15)
-	elif accessLevel = "owner":
-		print("owner")
-		#gate.PersonOpen()
-		lock.open(15)
-	elif acccessLevel = "lock":
-		print("lock open")
-		lock.open(30)
-	else:
-		#flash lights like an angry old man
-	
+		accessLevel = search_code(con, keypad)
 
-
-
-
-
-
-
-
-
-
-
+		if accessLevel == "gate":
+			print("gate open")
+			#gate.open()
+			exPkgLck.open(15)
+		elif accessLevel == "owner":
+			print("owner")
+			#gate.PersonOpen()
+			exPkgLck.open(15)
+		elif accessLevel == "lock":
+			print("lock open")
+			exPkgLck.open(30)
+		else:
+			#flash lights like an angry old man
+			pass
