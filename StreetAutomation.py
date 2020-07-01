@@ -1,10 +1,13 @@
+#StreetAutomation.py
 #https://pi4j.com/1.2/pins/model-b-rev2.html
 
 import RPi.GPIO as GPIO
+
 import time
 
 #pin numbers (BOARD) or the Broadcom GPIO numbers (BCM)
 GPIO.setmode(GPIO.BOARD)
+
 
 class lock:
 	def __init__(self, name, gpioNumber):
