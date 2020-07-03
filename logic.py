@@ -42,17 +42,18 @@ if __name__ == '__main__' :
 			if accessLevel == "gate":
 				print("gate open")
 				gate.open()
-				#exPkgLck.open(15)
 			elif accessLevel == "owner":
 				print("owner")
-				gate.PersonOpen()
-				#exPkgLck.open(15)
+				gate.personOpen()
 			elif accessLevel == "lock":
 				print("lock open")
-				exPkgLck.open(30)
+				exPkgLck.open(10)
 			elif accessLevel == "close":
 				print("closing Gate")
 				gate.close()
+			elif accessLevel == "stop":
+				print("stopping gate")
+				gate.stop(2)
 			else:
 				#flash lights like an angry old man
 				pass

@@ -26,6 +26,7 @@ class lock:
 
 class gate:
 	personTime = 5
+	toggle_length = .3
 
 	def __init__(self, name, pins):
 		self.name = name
@@ -38,21 +39,21 @@ class gate:
 	def open(self):
 		print("OPEN FUNCTION STARTING " + self.name)
 		GPIO.output(self.pinArray["open"],GPIO.LOW)
-		time.sleep(.300)
+		time.sleep(self.toggle_length)
 		print("Releasing " + self.name + " trigger")
 		GPIO.output(self.pinArray["open"],GPIO.HIGH)
 		pass
 
 	def close(self):
-		print("CLOSE FUNCTION STARTING" + self.name)
+		print("CLOSE FUNCTION STARTING " + self.name)
 		GPIO.output(self.pinArray["close"],GPIO.LOW)
-		time.sleep(.300)
+		time.sleep(self.toggle_length)
 		print("Releasing " + self.name + " trigger")
 		GPIO.output(self.pinArray["close"],GPIO.HIGH)
 		pass
 
-	def stop(self, stoptime):
-		print("STOP FUNCTION STARTING" + self.name + " for: " + str(time) + "sec")
+	def stop(self, stoptime=toggle_length):
+		print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
 		GPIO.output(self.pinArray["stop"],GPIO.LOW)
 		time.sleep(stoptime)
 		print("Releasing " + self.name + " trigger")
@@ -60,11 +61,11 @@ class gate:
 		pass
 
 	def personOpen(self):
-		print("PERSONOPEN FUNCTION STARTING " + self.name + " for: " + personTime + "sec")
-		open()
-		stop(personTime)
+		print("PERSONOPEN FUNCTION STARTING " + self.name + " for: " + str(self.personTime) + "sec")
+		self.open()
+		self.stop(self.personTime)
 		print("Closing " + self.name)
-		close()
+		self.close()
 		pass
 
 def gpioCleanup():
