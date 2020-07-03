@@ -67,6 +67,9 @@ class gate:
 		close()
 		pass
 
+def gpioCleanup():
+	GPIO.cleanup()
+	print("cleaned up rpi GPIO pins")
 
 
 if __name__ == '__main__' :

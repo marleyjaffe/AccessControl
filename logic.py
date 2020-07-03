@@ -32,23 +32,29 @@ if __name__ == '__main__' :
 	con = db_connect()
 	cur = con.cursor()
 
-	while True:
+	try:
+		while True:
 
-		keypad = input("Enter Access Code: ")
+			keypad = input("Enter Access Code: ")
 
-		accessLevel = search_code(con, keypad)
+			accessLevel = search_code(con, keypad)
 
-		if accessLevel == "gate":
-			print("gate open")
-			#gate.open()
-			exPkgLck.open(15)
-		elif accessLevel == "owner":
-			print("owner")
-			#gate.PersonOpen()
-			exPkgLck.open(15)
-		elif accessLevel == "lock":
-			print("lock open")
-			exPkgLck.open(30)
-		else:
-			#flash lights like an angry old man
-			pass
+			if accessLevel == "gate":
+				print("gate open")
+				gate.open()
+				#exPkgLck.open(15)
+			elif accessLevel == "owner":
+				print("owner")
+				gate.PersonOpen()
+				#exPkgLck.open(15)
+			elif accessLevel == "lock":
+				print("lock open")
+				exPkgLck.open(30)
+			elif accessLevel == "close":
+				print("closing Gate")
+				gate.close()
+			else:
+				#flash lights like an angry old man
+				pass
+	finally:
+		gpioCleanup()
