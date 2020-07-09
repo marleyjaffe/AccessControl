@@ -9,7 +9,25 @@ Trigger Home Assistant Event (MQTT)
 from db_utils import *
 from StreetAutomation import *
 
+
+
+
 if __name__ == '__main__' :
+	'''
+	This functin only runs if this specific python file is the one that is run
+	
+	Description:	sets up package electric strike lock and gate objects
+					setus up database connection 
+					loops input and checks result with db
+					db returns input access level
+					check access level and trigger associated logic
+
+	TODO: 	add Ringer logic (ABCD)
+			Confirm 4X4 keypad configuration and order from https://www.oitkeypad.com/Site/PDF/MVP-15-hr.pdf
+			Send result of db check to HomeAssistant
+
+	'''
+
 
 	'''
 	Setup Lock object for package drop
@@ -55,7 +73,15 @@ if __name__ == '__main__' :
 				print("stopping gate")
 				gate.stop(2)
 			else:
-				#flash lights like an angry old man
+				#TODO: flash lights like an angry old man
+				print("no hits found for either access level or code")
 				pass
 	finally:
 		gpioCleanup()
+
+
+
+
+
+
+
