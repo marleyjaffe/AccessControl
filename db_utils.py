@@ -7,39 +7,184 @@ import sqlite3
 DEFAULT_PATH = os.path.join(os.path.dirname(__file__), 'database.sqlite3')
 
 def db_connect(db_path=DEFAULT_PATH):
-    con = sqlite3.connect(db_path)
-    return con
+	con = sqlite3.connect(db_path)
+	return con
 
-'''
-Creates entry into code table
-'''
+
 def create_code(con, passedcode, passedname, passedaccesslevel):
-    sql = """
-        INSERT INTO codes (code, name, accesslevel)
-        VALUES (?, ?, ?)"""
-    cur = con.cursor()
-    cur.execute(sql, (passedcode, passedname, passedaccesslevel))
-    con.commit()
-    return cur.lastrowid
+	'''
+	Name:			create_code
 
-'''
-returns access level for passed code
-TODO: Add no match logic
-'''
+	Description:	Creates entry into code table
+
+	Input:			con: 				SQLite Connection
+					passedcode:			pin code to add to db
+					passedname:			name to associate to pincode in DB
+					passedaccesslevel:	AccessLevel (action type) to store with PinCode
+
+	Actions:		Uses sqlite to insert new pincode and additional info into DB
+
+	Return:			Returns new rowid. Returns False if code already exists
+
+	TODO: 			Check if pincode exists in DB yet. Prevent multi entries with same pincode. Return False if already exists
+	'''
+
+	sql = """
+		INSERT INTO codes (code, name, accesslevel)
+		VALUES (?, ?, ?)"""
+	cur = con.cursor()
+	cur.execute(sql, (passedcode, passedname, passedaccesslevel))
+	con.commit()
+	return cur.lastrowid
+
+
 def search_code(con, passedcode):
+	'''
+	Name:			search_code
+
+	Description:	returns access level for passed code
+
+	Input:			con: 				SQLite Connection
+					passedcode:			pincode to search for
+
+	Actions:		Checks if passedcode is a valid search value.
+					Searches for passedcode in DB.
+					Returns 
+
+	TODO: 			Decide if checks and returns should be independent functions
+	'''
+
+	if passedcode == "":
+		print("empty code passed to function. exiting search function safely")
+		return None
+	#Check if passedcode var is type string. If not, casts as a string
+	elif not isinstance(passedcode, str):
+		print("var not string. converting")
+		passedcode = str(passedcode)
 	sql = "SELECT code, name, accesslevel FROM codes WHERE code = " + passedcode
 	con.row_factory = sqlite3.Row
 	cur = con.cursor()
 	cur.execute(sql)
 	result = cur.fetchone()
-	returnedCode, returnedName, returnedAccessLevel = result['code'], result['name'], result['accesslevel']
-	print("Code: ", returnedCode, " Name is: ", returnedName, " Level is: ", returnedAccessLevel)
-	return returnedAccessLevel
+	if result is not None:
+		returnedCode, returnedName, returnedAccessLevel = result['code'], result['name'], result['accesslevel']
+		print("Code: ", returnedCode, " Name is: ", returnedName, " Level is: ", returnedAccessLevel)
+		return returnedAccessLevel
+	else:
+		print("No results found in table. Exiting function")
+		return
+
+def update_AccessLevel(con, passedCode, newAccessLevel):
+	'''
+	Name:			update_AccessLevel
+
+	Description:	Updates PinCode AccessLevel
+
+	Input:			con: 				SQLite Connection
+					passedcode:			pincode to update
+					newAccessLevel:		AccessLevel to update pincode to
+
+	Actions:		Checks if passedcode is valid.
+					SQL update accesslevel where pincode = passed value.
+					
+	Return:			Return False if passed code is not in db
+					Returns True if function success
+
+	TODO: 			make function commit (commented out for easy testing)
+	'''
+
+	if search_code(con, passedCode) is None:
+		return False
+	else:
+		sql = """
+			UPDATE codes 
+			SET accesslevel = ?
+			WHERE code = ?"""
+		cur = con.cursor()
+		cur.execute(sql, (newAccessLevel, passedCode))
+		#con.commit()
+		return True
+
+def update_name(con, passedCode, newName):
+	'''
+	Name:			update_name
+
+	Description:	Updates PinCode name
+
+	Input:			con: 				SQLite Connection
+					passedcode:			pincode to update
+					newName:			name to update pincode to
+
+	Actions:		Checks if passedcode is valid.
+					SQL update name where pincode = passed value.
+	
+	Return:			Return False if passed code is not in db
+					Returns True if function success
+
+	TODO: 			make function commit (commented out for easy testing)
+	'''
+
+	if search_code(con, passedCode) is None:
+		return False
+	else:
+		sql = """
+			UPDATE codes 
+			SET name = ?
+			WHERE code = ?"""
+		cur = con.cursor()
+		cur.execute(sql, (newName, passedCode))
+		#con.commit()
+		return True
+
+'''
+removes code from sqlite db
+TODO: make function commit
+'''
+def delete_code(con, passedCode):
+	'''
+	Name:			delete_code
+
+	Description:	removes code row from DB
+
+	Input:			con: 				SQLite Connection
+					passedcode:			pincode to update
+
+	Actions:		Checks if passedcode is valid.
+					SQL delete row
+
+	Return:			Return False if passed code is not in db
+					Returns True if function success
+
+	TODO: 			make function commit (commented out for easy testing)
+	'''
+
+	if search_code(con, passedCode) is None:
+		return False
+	else:
+		sql = " DELETE FROM codes WHERE code = ?"
+		cur = con.cursor()
+		cur.execute(sql, (passedCode,))
+		#con.commit()
+		return True
 
 '''
 prints and returns all entries in the codes table
 '''
 def all_codes(con):
+	'''
+	Name:			all_codes
+
+	Description:	returns all codes in DB
+
+	Input:			con: 				SQLite Connection
+					passedcode:			pincode to update
+
+	Actions:		Select * from Codes table
+					prints all code rows
+
+	Return:			Returns all results
+	'''
+
 	sql = "SELECT * FROM codes"
 	#con.row_factory = sqlite3.Row
 	cur = con.cursor()
@@ -53,13 +198,13 @@ def all_codes(con):
 creates new ringer entries
 '''
 def create_ring(con, passedcode, passedname, passednumber, passedoption):
-    sql = """
-        INSERT INTO ring (code, name, number, option)
-        VALUES (?, ?, ?, ?)"""
-    cur = con.cursor()
-    cur.execute(sql, (passedcode, passedname, passednumber, passedoption))
-    con.commit()
-    return cur.lastrowid
+	sql = """
+		INSERT INTO ring (code, name, number, option)
+		VALUES (?, ?, ?, ?)"""
+	cur = con.cursor()
+	cur.execute(sql, (passedcode, passedname, passednumber, passedoption))
+	con.commit()
+	return cur.lastrowid
 
 
 '''
