@@ -49,7 +49,7 @@ def search_code(con, passedcode):
 
 	Actions:		Checks if passedcode is a valid search value.
 					Searches for passedcode in DB.
-					Returns 
+					Returns AccessLevel
 
 	TODO: 			Decide if checks and returns should be independent functions
 	'''
