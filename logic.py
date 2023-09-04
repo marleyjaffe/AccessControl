@@ -17,7 +17,7 @@ if __name__ == '__main__' :
 	This functin only runs if this specific python file is the one that is run
 	
 	Description:	sets up package electric strike lock and gate objects
-					setus up database connection 
+					sets up database connection 
 					loops input and checks result with db
 					db returns input access level
 					check access level and trigger associated logic
