@@ -255,7 +255,8 @@ Used for direct interaction into SQLite Database\
 
 from db_utils import *
 con = db_connect()
-all'''
+cur = con.cursor()
+'''
 
 
 
