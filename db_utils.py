@@ -89,8 +89,6 @@ def update_AccessLevel(con, passedCode, newAccessLevel):
 					
 	Return:			Return False if passed code is not in db
 					Returns True if function success
-
-	TODO: 			make function commit (commented out for easy testing)
 	'''
 
 	if search_code(con, passedCode) is None:
@@ -102,7 +100,7 @@ def update_AccessLevel(con, passedCode, newAccessLevel):
 			WHERE code = ?"""
 		cur = con.cursor()
 		cur.execute(sql, (newAccessLevel, passedCode))
-		#con.commit()
+		con.commit()
 		return True
 
 def update_name(con, passedCode, newName):
@@ -120,8 +118,6 @@ def update_name(con, passedCode, newName):
 	
 	Return:			Return False if passed code is not in db
 					Returns True if function success
-
-	TODO: 			make function commit (commented out for easy testing)
 	'''
 
 	if search_code(con, passedCode) is None:
@@ -133,7 +129,7 @@ def update_name(con, passedCode, newName):
 			WHERE code = ?"""
 		cur = con.cursor()
 		cur.execute(sql, (newName, passedCode))
-		#con.commit()
+		con.commit()
 		return True
 
 '''
@@ -154,8 +150,6 @@ def delete_code(con, passedCode):
 
 	Return:			Return False if passed code is not in db
 					Returns True if function success
-
-	TODO: 			make function commit (commented out for easy testing)
 	'''
 
 	if search_code(con, passedCode) is None:
@@ -164,7 +158,7 @@ def delete_code(con, passedCode):
 		sql = " DELETE FROM codes WHERE code = ?"
 		cur = con.cursor()
 		cur.execute(sql, (passedCode,))
-		#con.commit()
+		con.commit()
 		return True
 
 '''
@@ -240,15 +234,6 @@ def all_tables(con):
 	cur = con.cursor()
 	cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
 	print(cur.fetchall())
-
-'''
-Used to generate sqlite schema for easy sqlite recreation
-'''
-def generate_schema(con):
-	cur = con.cursor()
-	cur.execute("SELECT * FROM sqlite_schema")
-	print(cur.fetchall())
-
 
 '''
 Used for direct interaction into SQLite Database\
