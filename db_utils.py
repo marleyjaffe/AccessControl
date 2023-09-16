@@ -246,7 +246,7 @@ Used to generate sqlite schema for easy sqlite recreation
 '''
 def generate_schema(con):
 	cur = con.cursor()
-	cur.execute("SELECT * FROM sqlite_schema)
+	cur.execute("SELECT * FROM sqlite_schema")
 	print(cur.fetchall())
 
 
