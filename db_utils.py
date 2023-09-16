@@ -236,11 +236,14 @@ def all_tables(con):
 	print(cur.fetchall())
 
 '''
-Used for direct interaction into SQLite Database\
+Used for direct interaction into SQLite Database
+In terminal run the below commands while in the application directory:
 
+python3
 from db_utils import *
 con = db_connect()
 cur = con.cursor()
+
 '''
 
 
