@@ -241,14 +241,21 @@ def all_tables(con):
 	cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
 	print(cur.fetchall())
 
+'''
+Used to generate sqlite schema for easy sqlite recreation
+'''
+def generate_schema(con):
+	cur = con.cursor()
+	cur.execute("SELECT * FROM sqlite_schema)
+	print(cur.fetchall())
+
 
 '''
 Used for direct interaction into SQLite Database\
 
 from db_utils import *
 con = db_connect()
-cur = con.cursor()
-'''
+all'''
 
 
 
