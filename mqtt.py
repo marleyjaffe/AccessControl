@@ -88,9 +88,9 @@ def publish(client):
         # result: [0, 1]
         status = result[0]
         if status == 0:
-            print(f'Send `{msg}` to topic `{TOPIC}`')
+            print(f'Send `{msg}` to topic `{PUB_TOPIC}`')
         else:
-            print(f'Failed to send message to topic {TOPIC}')
+            print(f'Failed to send message to topic {PUB_TOPIC}')
         msg_count += 1
         time.sleep(10)
 
