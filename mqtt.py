@@ -61,7 +61,6 @@ def connect_mqtt():
     client = mqtt_client.Client(CLIENT_ID)
     # client.username_pw_set(USERNAME, PASSWORD)
     client.on_connect = on_connect
-    client.on_message = on_message
     client.connect(BROKER, PORT, keepalive=120)
     client.on_disconnect = on_disconnect
     return client
@@ -72,6 +71,8 @@ def subscribe(client):
         print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
 
     client.subscribe(SUB_TOPIC)
+    client.on_message = on_message
+    
     print(f"Subscribed to {SUB_TOPIC}!")
 
 
