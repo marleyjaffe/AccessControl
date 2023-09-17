@@ -31,7 +31,6 @@ FLAG_EXIT = False
 def on_connect(client, userdata, flags, rc):
     if rc == 0 and client.is_connected():
         print("Connected to MQTT Broker!")
-        client.subscribe(SUB_TOPIC)
     else:
         print(f'Failed to connect, return code {rc}')
 
@@ -58,10 +57,6 @@ def on_disconnect(client, userdata, rc):
     FLAG_EXIT = True
 
 
-def on_message(client, userdata, msg):
-    print(f'Received `{msg.payload.decode()}` from `{msg.topic}` topic')
-
-
 def connect_mqtt():
     client = mqtt_client.Client(CLIENT_ID)
     # client.username_pw_set(USERNAME, PASSWORD)
@@ -70,6 +65,14 @@ def connect_mqtt():
     client.connect(BROKER, PORT, keepalive=120)
     client.on_disconnect = on_disconnect
     return client
+
+
+def subscribe(client):
+    def on_message(client, userdata, msg):
+        print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+
+    client.subscribe(SUB_TOPIC)
+    print(f"Subscribed to {SUB_TOPIC}!")
 
 
 def publish(client):
@@ -102,8 +105,8 @@ def run():
     client.loop_start()
     time.sleep(1)
     if client.is_connected():
+        subscribe(client)
         publish(client)
-
     else:
         client.loop_stop()
 
