@@ -21,7 +21,7 @@ client = mqtt.Client("gatepi", protocol="MQTTv311")             #create new inst
 client.on_connect=on_connect  #bind call back function
 client.loop_start()
 print("Connecting to broker ",broker)
-client.connect(broker, port=1883, keepalive=60, bind_address="", bind_port=0, clean_start=MQTT_CLEAN_START_FIRST_ONLY, properties=None)      #connect to broker
+client.connect(broker, port=1883, keepalive=60, bind_address="")      #connect to broker
 while not client.connected_flag: #wait in loop
     print("In wait loop")
     time.sleep(1)
