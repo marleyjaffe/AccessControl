@@ -1,37 +1,109 @@
 #mqtt.py
-#http://www.steves-internet-guide.com/client-connections-python-mqtt/
+# https://www.emqx.com/en/blog/how-to-use-mqtt-in-python
+# https://github.com/emqx/MQTT-Client-Examples/blob/master/mqtt-client-Python3/pub_sub_tcp.py
 
-#!python3
-import paho.mqtt.client as mqtt  #import the client1
+# python 3.6
+
+import json
+import logging
+import random
 import time
 
+from paho.mqtt import client as mqtt_client
+
+BROKER = '10.10.10.3'
+PORT = 1883
+TOPIC = "accesscontrol/gate"
+# generate client ID with pub prefix randomly
+CLIENT_ID = f'python-mqtt-tcp-pub-sub-{random.randint(0, 1000)}'
+USERNAME = ''
+PASSWORD = ''
+
+FIRST_RECONNECT_DELAY = 1
+RECONNECT_RATE = 2
+MAX_RECONNECT_COUNT = 12
+MAX_RECONNECT_DELAY = 60
+
+FLAG_EXIT = False
+
+
 def on_connect(client, userdata, flags, rc):
-    if rc==0:
-        client.connected_flag=True #set flag
-        print("connected OK")
+    if rc == 0 and client.is_connected():
+        print("Connected to MQTT Broker!")
+        client.subscribe(TOPIC)
     else:
-        print("Bad connection Returned code=",rc)
+        print(f'Failed to connect, return code {rc}')
 
-def on_message(client, userdata, message):
-    print("message received " ,str(message.payload.decode("utf-8")))
-    print("message topic=",message.topic)
-    print("message qos=",message.qos)
-    print("message retain flag=",message.retain)
 
-mqtt.Client.connected_flag=False#create flag in class
-broker="10.10.10.3"
-client = mqtt.Client("gatepi")             #create new instance 
-client.on_connect=on_connect  #bind call back function
-client.on_message=on_message #attach function to callback
-client.loop_start()
-print("Connecting to broker ",broker)
-client.connect(broker)      #connect to broker
-while not client.connected_flag: #wait in loop
-    print("In wait loop")
+def on_disconnect(client, userdata, rc):
+    logging.info("Disconnected with result code: %s", rc)
+    reconnect_count, reconnect_delay = 0, FIRST_RECONNECT_DELAY
+    while reconnect_count < MAX_RECONNECT_COUNT:
+        logging.info("Reconnecting in %d seconds...", reconnect_delay)
+        time.sleep(reconnect_delay)
+
+        try:
+            client.reconnect()
+            logging.info("Reconnected successfully!")
+            return
+        except Exception as err:
+            logging.error("%s. Reconnect failed. Retrying...", err)
+
+        reconnect_delay *= RECONNECT_RATE
+        reconnect_delay = min(reconnect_delay, MAX_RECONNECT_DELAY)
+        reconnect_count += 1
+    logging.info("Reconnect failed after %s attempts. Exiting...", reconnect_count)
+    global FLAG_EXIT
+    FLAG_EXIT = True
+
+
+def on_message(client, userdata, msg):
+    print(f'Received `{msg.payload.decode()}` from `{msg.topic}` topic')
+
+
+def connect_mqtt():
+    client = mqtt_client.Client(CLIENT_ID)
+    # client.username_pw_set(USERNAME, PASSWORD)
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(BROKER, PORT, keepalive=120)
+    client.on_disconnect = on_disconnect
+    return client
+
+
+def publish(client):
+    msg_count = 0
+    while not FLAG_EXIT:
+        msg_dict = {
+            'msg': msg_count
+        }
+        msg = json.dumps(msg_dict)
+        if not client.is_connected():
+            logging.error("publish: MQTT client is not connected!")
+            time.sleep(1)
+            continue
+        result = client.publish(TOPIC, msg)
+        # result: [0, 1]
+        status = result[0]
+        if status == 0:
+            print(f'Send `{msg}` to topic `{TOPIC}`')
+        else:
+            print(f'Failed to send message to topic {TOPIC}')
+        msg_count += 1
+        time.sleep(1)
+
+
+def run():
+    logging.basicConfig(format='%(asctime)s - %(levelname)s: %(message)s',
+                        level=logging.DEBUG)
+    client = connect_mqtt()
+    client.loop_start()
     time.sleep(1)
-print("in Main Loop")
-client.subscribe("gate/#")
-client.publish("gate/OPEN","OPEN")
-time.sleep(30)
-client.loop_stop()    #Stop loop 
-client.disconnect() # disconnect
+    if client.is_connected():
+        publish(client)
+    else:
+        client.loop_stop()
+
+
+if __name__ == '__main__':
+    run()
