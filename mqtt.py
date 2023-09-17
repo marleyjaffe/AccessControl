@@ -12,7 +12,7 @@ import time
 from paho.mqtt import client as mqtt_client
 
 from StreetAutomation import *
-from locic import *
+from logic import *
 
 
 BROKER = '10.10.10.3'
