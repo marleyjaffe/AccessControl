@@ -117,7 +117,7 @@ def run():
     if client.is_connected():
         accessControlSetup()
         subscribe(client)
-
+        client.loop_forever()
     else:
         client.loop_stop()
 
