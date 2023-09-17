@@ -17,7 +17,7 @@ def on_connect(client, userdata, flags, rc, properties=None):
 mqtt.Client.connected_flag=False#create flag in class
 broker="10.10.10.3"
 properties=None #needed for MQTTv3 with script supporting v5
-client = mqtt.Client("gatepi", protocol="MQTTv311")             #create new instance 
+client = mqtt.Client("gatepi")             #create new instance 
 client.on_connect=on_connect  #bind call back function
 client.loop_start()
 print("Connecting to broker ",broker)
