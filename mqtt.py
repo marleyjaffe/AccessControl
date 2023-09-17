@@ -13,7 +13,8 @@ from paho.mqtt import client as mqtt_client
 
 BROKER = '10.10.10.3'
 PORT = 1883
-TOPIC = "accesscontrol/gate"
+SUB_TOPIC = "accesscontrol/gate/#"
+PUB_TOPIC = "accesscontrol/gate"
 # generate client ID with pub prefix randomly
 CLIENT_ID = f'python-mqtt-tcp-pub-sub-{random.randint(0, 1000)}'
 USERNAME = ''
@@ -30,7 +31,7 @@ FLAG_EXIT = False
 def on_connect(client, userdata, flags, rc):
     if rc == 0 and client.is_connected():
         print("Connected to MQTT Broker!")
-        client.subscribe(TOPIC)
+        client.subscribe(SUB_TOPIC)
     else:
         print(f'Failed to connect, return code {rc}')
 
@@ -74,15 +75,16 @@ def connect_mqtt():
 def publish(client):
     msg_count = 0
     while not FLAG_EXIT:
-        msg_dict = {
-            'msg': msg_count
-        }
-        msg = json.dumps(msg_dict)
+        # msg_dict = {
+        #     'msg': msg_count
+        # }
+        # msg = json.dumps(msg_dict)
+        msg = "test"
         if not client.is_connected():
             logging.error("publish: MQTT client is not connected!")
             time.sleep(1)
             continue
-        result = client.publish(TOPIC, msg)
+        result = client.publish(PUB_TOPIC, msg)
         # result: [0, 1]
         status = result[0]
         if status == 0:
