@@ -90,7 +90,7 @@ def publish(client):
         else:
             print(f'Failed to send message to topic {TOPIC}')
         msg_count += 1
-        time.sleep(1)
+        time.sleep(10)
 
 
 def run():
@@ -99,9 +99,9 @@ def run():
     client = connect_mqtt()
     client.loop_start()
     time.sleep(1)
-    publish(client)
     if client.is_connected():
-        print(f'Client is connected')
+        publish(client)
+
     else:
         client.loop_stop()
 
