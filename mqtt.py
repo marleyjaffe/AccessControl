@@ -101,7 +101,7 @@ def run():
     time.sleep(1)
     publish(client)
     if client.is_connected():
-
+        print(f'Client is connected')
     else:
         client.loop_stop()
 
