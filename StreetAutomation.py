@@ -17,7 +17,7 @@ class lock:
 		GPIO.output(self.pin,GPIO.HIGH)
 		pass
 
-	def open(self, unlocktime):
+	def open(self, unlocktime=15):
 		print("Opening " + self.name + " for: " + str(unlocktime) + "sec")
 		GPIO.output(self.pin,GPIO.LOW)
 		time.sleep(unlocktime)
