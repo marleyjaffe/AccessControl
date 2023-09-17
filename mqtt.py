@@ -99,7 +99,6 @@ def publish(client, PUB_TOPIC =DEFAULT_PUB_TOPIC, msg ="test"):
         if not client.is_connected():
             logging.error("publish: MQTT client is not connected!")
             time.sleep(1)
-            continue
         result = client.publish(PUB_TOPIC, msg)
         # result: [0, 1]
         status = result[0]
