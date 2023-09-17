@@ -32,6 +32,6 @@ while not client.connected_flag: #wait in loop
 print("in Main Loop")
 client.subscribe("gate/#")
 client.publish("gate/OPEN","OPEN")
-time.sleep(11)
-#client.loop_stop()    #Stop loop 
-#client.disconnect() # disconnect
+time.sleep(30)
+client.loop_stop()    #Stop loop 
+client.disconnect() # disconnect
