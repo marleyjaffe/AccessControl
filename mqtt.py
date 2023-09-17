@@ -17,7 +17,7 @@ from StreetAutomation import *
 BROKER = '10.10.10.3'
 PORT = 1883
 SUB_TOPIC = "accesscontrol/#"
-PUB_TOPIC = "accesscontrol/gate"
+DEFAULT_PUB_TOPIC = "accesscontrol/gate"
 # generate client ID with pub prefix randomly
 CLIENT_ID = f'python-mqtt-tcp-pub-sub-{random.randint(0, 1000)}'
 USERNAME = ''
@@ -88,9 +88,8 @@ def subscribe(client):
     print(f"Subscribed to {SUB_TOPIC}!")
 
 
-def publish(client):
-    msg_count = 0
-    while not FLAG_EXIT:
+def publish(client, PUB_TOPIC =DEFAULT_PUB_TOPIC, msg ="test"):
+    if not FLAG_EXIT:
         # msg_dict = {
         #     'msg': msg_count
         # }
@@ -107,8 +106,6 @@ def publish(client):
             print(f'Send `{msg}` to topic `{PUB_TOPIC}`')
         else:
             print(f'Failed to send message to topic {PUB_TOPIC}')
-        msg_count += 1
-        time.sleep(10)
 
 
 def run():
