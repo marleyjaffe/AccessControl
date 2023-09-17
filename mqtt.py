@@ -11,9 +11,12 @@ import time
 
 from paho.mqtt import client as mqtt_client
 
+from StreetAutomation import *
+
+
 BROKER = '10.10.10.3'
 PORT = 1883
-SUB_TOPIC = "accesscontrol/gate/#"
+SUB_TOPIC = "accesscontrol/#"
 PUB_TOPIC = "accesscontrol/gate"
 # generate client ID with pub prefix randomly
 CLIENT_ID = f'python-mqtt-tcp-pub-sub-{random.randint(0, 1000)}'
@@ -69,10 +72,19 @@ def connect_mqtt():
 def subscribe(client):
     def on_message(client, userdata, msg):
         print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+        if msg.topic == "accesscontrol/gate/OPEN":
+            gate.open()
+        elif msg.topic == "accesscontrol/gate/CLOSE":
+            gate.close()
+        elif msg.topic == "accesscontrol/gate/CLOSE":
+            gate.stop()
+        elif msg.topic == "accesscontrol/lock/OPEN":
+            lock.open(5)
+
 
     client.subscribe(SUB_TOPIC)
     client.on_message = on_message
-    
+
     print(f"Subscribed to {SUB_TOPIC}!")
 
 
