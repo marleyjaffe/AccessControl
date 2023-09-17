@@ -23,5 +23,6 @@ while not client.connected_flag: #wait in loop
     print("In wait loop")
     time.sleep(1)
 print("in Main Loop")
+client.subscribe("gate/#")
 client.loop_stop()    #Stop loop 
 client.disconnect() # disconnect
