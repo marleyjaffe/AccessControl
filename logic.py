@@ -15,7 +15,7 @@ cPIN = 13
 sPIN = 15
 lPIN = 11
 
-def setup():
+def accessControlSetup():
 	'''
 	Setup Lock object for package drop
 	'''
@@ -75,7 +75,7 @@ if __name__ == '__main__' :
 		while True:
 
 			keypad = input("Enter Access Code: ")
-			setup()
+			accessControlSetup()
 			logic(keypad)
 			
 	finally:

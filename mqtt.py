@@ -12,6 +12,7 @@ import time
 from paho.mqtt import client as mqtt_client
 
 from StreetAutomation import *
+from locic import *
 
 
 BROKER = '10.10.10.3'
@@ -115,8 +116,9 @@ def run():
     client.loop_start()
     time.sleep(1)
     if client.is_connected():
+        accessControlSetup()
         subscribe(client)
-        publish(client)
+
     else:
         client.loop_stop()
 
