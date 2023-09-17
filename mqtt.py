@@ -99,8 +99,9 @@ def run():
     client = connect_mqtt()
     client.loop_start()
     time.sleep(1)
+    publish(client)
     if client.is_connected():
-        publish(client)
+
     else:
         client.loop_stop()
 
