@@ -15,6 +15,8 @@ cPIN = 13
 sPIN = 15
 lPIN = 11
 
+global gate
+
 def accessControlSetup():
 	'''
 	Setup Lock object for package drop
