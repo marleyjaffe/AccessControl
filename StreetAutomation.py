@@ -10,6 +10,8 @@ GPIO.setmode(GPIO.BOARD)
 
 
 class lock:
+	default_time = 15
+
 	def __init__(self, name, gpioNumber):
 		self.name = name
 		self.pin = gpioNumber
@@ -17,7 +19,7 @@ class lock:
 		GPIO.output(self.pin,GPIO.HIGH)
 		pass
 
-	def open(self, unlocktime=15):
+	def open(self, unlocktime=default_time):
 		print("Opening " + self.name + " for: " + str(unlocktime) + "sec")
 		GPIO.output(self.pin,GPIO.LOW)
 		time.sleep(unlocktime)
