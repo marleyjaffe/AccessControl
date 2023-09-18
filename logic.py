@@ -8,6 +8,7 @@ Trigger Home Assistant Event (MQTT)
 
 from db_utils import *
 from StreetAutomation import *
+from mqtt import *
 	
 #set pin num variables
 oPIN = 12
@@ -19,21 +20,7 @@ gate
 
 def accessControlSetup():
 	global gate
-	'''
-	Setup Lock object for package drop
-	'''
-	exPkgLck = lock("package", 11)
 
-	'''
-	Setup gate object
-	'''
-	gate = gate("gate1", {"open": oPIN, "close": cPIN, "stop": sPIN})
-
-	'''
-	Setup database connection
-	'''
-	con = db_connect()
-	cur = con.cursor()
 
 def logic(keypad_input):
 	accessLevel = search_code(con, keypad_input)
@@ -75,8 +62,23 @@ if __name__ == '__main__' :
 	'''
 
 	try:
-		while True:
+		'''
+		Setup Lock object for package drop
+		'''
+		exPkgLck = lock("package", 11)
 
+		'''
+		Setup gate object
+		'''
+		gate = gate("gate1", {"open": oPIN, "close": cPIN, "stop": sPIN})
+
+		'''
+		Setup database connection
+		'''
+		con = db_connect()
+		cur = con.cursor()
+		runMQTTSetup()
+		while True:
 			keypad = input("Enter Access Code: ")
 			accessControlSetup()
 			logic(keypad)

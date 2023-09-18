@@ -11,8 +11,8 @@ import time
 
 from paho.mqtt import client as mqtt_client
 
-from StreetAutomation import *
-from logic import *
+# from StreetAutomation import *
+# from logic import *
 
 
 BROKER = '10.10.10.3'
@@ -108,18 +108,13 @@ def publish(client, PUB_TOPIC =DEFAULT_PUB_TOPIC, msg ="test"):
             print(f'Failed to send message to topic {PUB_TOPIC}')
 
 
-def run():
+def runMQTTSetup():
     logging.basicConfig(format='%(asctime)s - %(levelname)s: %(message)s',
                         level=logging.DEBUG)
     client = connect_mqtt()
-    client.loop_start()
-    time.sleep(1)
-    if client.is_connected():
-        accessControlSetup()
-        subscribe(client)
-        client.loop_forever()
-    else:
-        client.loop_stop()
+    subscribe(client)
+    client.loop_forever()
+    
 
 
 if __name__ == '__main__':
