@@ -39,8 +39,6 @@ MAX_RECONNECT_DELAY = 60
 
 FLAG_EXIT = False
 
-gate
-
 def on_connect(client, userdata, flags, rc):
     if rc == 0 and client.is_connected():
         print("Connected to MQTT Broker!")
@@ -89,7 +87,7 @@ def subscribe(client):
         elif msg.topic == "accesscontrol/gate/STOP":
             gate.stop()
         elif msg.topic == "accesscontrol/lock/OPEN":
-            lock.open(5)
+            lock.open()
 
 
     client.subscribe(SUB_TOPIC)
@@ -182,7 +180,6 @@ if __name__ == '__main__' :
 		runMQTTSetup()
 		while True:
 			keypad = input("Enter Access Code: ")
-			accessControlSetup()
 			logic(keypad)
 			
 	finally:
