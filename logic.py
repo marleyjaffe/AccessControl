@@ -4,6 +4,7 @@ https://stackabuse.com/a-sqlite-tutorial-with-python/
 Ring Phone Number
 Text Message
 Trigger Home Assistant Event (MQTT)
+	-> change to async MQTT to stop blocking when 
 '''
 
 # python 3.6
@@ -86,6 +87,8 @@ def subscribe(client):
             gate.close()
         elif msg.topic == "accesscontrol/gate/STOP":
             gate.stop()
+		elif msg.topic == "accesscontrol/gate/PERSON":
+            gate.personOpen()
         elif msg.topic == "accesscontrol/lock/OPEN":
             exPkgLck.open()
 
