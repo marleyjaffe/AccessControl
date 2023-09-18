@@ -87,7 +87,7 @@ def subscribe(client):
             gate.close()
         elif msg.topic == "accesscontrol/gate/STOP":
             gate.stop()
-		elif msg.topic == "accesscontrol/gate/PERSON":
+        elif msg.topic == "accesscontrol/gate/PERSON":
             gate.personOpen()
         elif msg.topic == "accesscontrol/lock/OPEN":
             exPkgLck.open()
