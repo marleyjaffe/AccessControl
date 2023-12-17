@@ -1,121 +1,48 @@
-#mqtt.py
-# https://www.emqx.com/en/blog/how-to-use-mqtt-in-python
-# https://github.com/emqx/MQTT-Client-Examples/blob/master/mqtt-client-Python3/pub_sub_tcp.py
+from ha_mqtt_discoverable import *
+# from ha_mqtt_discoverable import Settings
+# from ha_mqtt_discoverable.sensors import Cover, CoverInfo
+from paho.mqtt.client import Client, MQTTMessage
 
-# python 3.6
-
-import json
-import logging
-import random
-import time
-
-from paho.mqtt import client as mqtt_client
-
-# from StreetAutomation import *
-# from logic import *
+from StreetAutomation import *
+from logic import *
 
 
-BROKER = '10.10.10.3'
-PORT = 1883
-SUB_TOPIC = "accesscontrol/#"
-DEFAULT_PUB_TOPIC = "accesscontrol/gate"
-# generate client ID with pub prefix randomly
-CLIENT_ID = f'python-mqtt-tcp-pub-sub-{random.randint(0, 1000)}'
-USERNAME = ''
-PASSWORD = ''
+# Configure the required parameters for the MQTT broker
+mqtt_settings = Settings.MQTT(host="10.10.10.3")
 
-FIRST_RECONNECT_DELAY = 1
-RECONNECT_RATE = 2
-MAX_RECONNECT_COUNT = 12
-MAX_RECONNECT_DELAY = 60
+# Information about the cover
+cover_info = CoverInfo(name="catt-gatepi")
 
-FLAG_EXIT = False
+settings = Settings(mqtt=mqtt_settings, entity=cover_info)
 
+# To receive state commands from HA, define a callback function:
+def my_callback(client: Client, user_data, message: MQTTMessage):
+	payload = message.payload.decode()
+	if payload == "OPEN":
+		# let HA know that the cover is opening
+		my_cover.opening()
+		# call function to open cover
+		gate.open()
+		# Let HA know that the cover was opened
+		my_cover.open()
+	if payload == "CLOSE":
+		# let HA know that the cover is closing
+		my_cover.closing()
+		# call function to close the cover
+		close_my_custom_cover()
+		# Let HA know that the cover was closed
+		my_cover.closed()
+	if payload == "STOP":
+		# call function to stop the cover
+		stop_my_custom_cover()
+		# Let HA know that the cover was stopped
+		my_cover.stopped()
 
-def on_connect(client, userdata, flags, rc):
-    if rc == 0 and client.is_connected():
-        print("Connected to MQTT Broker!")
-    else:
-        print(f'Failed to connect, return code {rc}')
+# Define an optional object to be passed back to the callback
+user_data = "Some custom data"
 
+# Instantiate the cover
+my_cover = Cover(settings, my_callback, user_data)
 
-def on_disconnect(client, userdata, rc):
-    logging.info("Disconnected with result code: %s", rc)
-    reconnect_count, reconnect_delay = 0, FIRST_RECONNECT_DELAY
-    while reconnect_count < MAX_RECONNECT_COUNT:
-        logging.info("Reconnecting in %d seconds...", reconnect_delay)
-        time.sleep(reconnect_delay)
-
-        try:
-            client.reconnect()
-            logging.info("Reconnected successfully!")
-            return
-        except Exception as err:
-            logging.error("%s. Reconnect failed. Retrying...", err)
-
-        reconnect_delay *= RECONNECT_RATE
-        reconnect_delay = min(reconnect_delay, MAX_RECONNECT_DELAY)
-        reconnect_count += 1
-    logging.info("Reconnect failed after %s attempts. Exiting...", reconnect_count)
-    global FLAG_EXIT
-    FLAG_EXIT = True
-
-
-def connect_mqtt():
-    client = mqtt_client.Client(CLIENT_ID)
-    # client.username_pw_set(USERNAME, PASSWORD)
-    client.on_connect = on_connect
-    client.connect(BROKER, PORT, keepalive=120)
-    client.on_disconnect = on_disconnect
-    return client
-
-
-def subscribe(client):
-    def on_message(client, userdata, msg):
-        print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
-        if msg.topic == "accesscontrol/gate/OPEN":
-            gate.open()
-        elif msg.topic == "accesscontrol/gate/CLOSE":
-            gate.close()
-        elif msg.topic == "accesscontrol/gate/CLOSE":
-            gate.stop()
-        elif msg.topic == "accesscontrol/lock/OPEN":
-            lock.open(5)
-
-
-    client.subscribe(SUB_TOPIC)
-    client.on_message = on_message
-
-    print(f"Subscribed to {SUB_TOPIC}!")
-
-
-def publish(client, PUB_TOPIC =DEFAULT_PUB_TOPIC, msg ="test"):
-    if not FLAG_EXIT:
-        # msg_dict = {
-        #     'msg': msg_count
-        # }
-        # msg = json.dumps(msg_dict)
-        msg = "test"
-        if not client.is_connected():
-            logging.error("publish: MQTT client is not connected!")
-            time.sleep(1)
-        result = client.publish(PUB_TOPIC, msg)
-        # result: [0, 1]
-        status = result[0]
-        if status == 0:
-            print(f'Send `{msg}` to topic `{PUB_TOPIC}`')
-        else:
-            print(f'Failed to send message to topic {PUB_TOPIC}')
-
-
-def runMQTTSetup():
-    logging.basicConfig(format='%(asctime)s - %(levelname)s: %(message)s',
-                        level=logging.DEBUG)
-    client = connect_mqtt()
-    subscribe(client)
-    client.loop_forever()
-    
-
-
-if __name__ == '__main__':
-    run()
+# Set the initial state of the cover, which also makes it discoverable
+my_cover.closed()
