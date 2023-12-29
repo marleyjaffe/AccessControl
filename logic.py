@@ -20,7 +20,7 @@ import RPi.GPIO as GPIO
 
 #MQTT Imports
 from ha_mqtt_discoverable import Settings, DeviceInfo
-from ha_mqtt_discoverable.sensors import Cover, CoverInfo, Button, ButtonInfo
+from ha_mqtt_discoverable.sensors import Cover, CoverInfo, Button, ButtonInfo, Text, TextInfo, BinarySensor, BinarySensorInfo
 from paho.mqtt.client import Client, MQTTMessage
 
 #set pin num variables
@@ -209,6 +209,26 @@ catt_person = Button(gate_person_settings, person_callback, user_data)
 # Publish the button's discoverability message to let HA automatically notice it
 catt_person.write_config()
 
+## AccessCode Used
+# Information about the access code text
+AccessCodeUsed = BinarySensorInfo(name="access-code-entered", unique_id="catt-gatepi-accesscode-sensor", device=device_info)
+AccessCodeUsed_settings = Settings(mqtt=mqtt_settings, entity=AccessCodeUsed)
+
+# # To receive button commands from HA, define a callback function:
+# def accesscode_callback(client: Client, user_data, message: MQTTMessage):
+# 	text = message.payload.decode()
+# 	logging.info(f"Received {text} from HA")
+# 	# do_some_custom_thing(text)
+# 	# Send an MQTT message to confirm to HA that the text was changed
+# 	catt_accesscode.set_text(text)
+	
+
+# Instantiate the text
+catt_accesscode = BinarySensor(AccessCodeUsed_settings)
+
+# Publish the button's discoverability message to let HA automatically notice it
+catt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup"})
+
 
 
 
@@ -253,6 +273,9 @@ if __name__ == '__main__' :
 			keypad = input("Enter Access Code: ")
 			# logic(keypad)
 			accessLevel = search_code(con, keypad)
+			catt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad})
+			# catt_accesscode.set_text(keypad)
+			# catt_accesscode.set_text(accessLevel)
 			if accessLevel == "gate":
 				print("gate open")
 				gate.open()
