@@ -10,24 +10,28 @@ Trigger Home Assistant Event (MQTT)
 # python 3.10
 
 from db_utils import *
-from StreetAutomation import *
+# from StreetAutomation import *
 
 import json
 import logging
 import random
 import time
+import RPi.GPIO as GPIO
 
+#MQTT Imports
 from ha_mqtt_discoverable import Settings, DeviceInfo
 from ha_mqtt_discoverable.sensors import Cover, CoverInfo, Button, ButtonInfo
 from paho.mqtt.client import Client, MQTTMessage
 
-	
 #set pin num variables
 O_PIN = 12
 C_PIN = 13
 S_PIN = 15
 L_PIN = 11
 
+#pin numbers (BOARD) or the Broadcom GPIO numbers (BCM)
+#https://pi4j.com/1.2/pins/model-b-rev2.html
+GPIO.setmode(GPIO.BOARD)
 
 
 def logic(keypad_input):
@@ -57,6 +61,74 @@ def logic(keypad_input):
 		pass
 
 
+class lock:
+	default_time = 15
+
+	def __init__(self, name, gpioNumber):
+		self.name = name
+		self.pin = gpioNumber
+		GPIO.setup(self.pin,GPIO.OUT)
+		GPIO.output(self.pin,GPIO.HIGH)
+		pass
+
+	def open(self, unlocktime=default_time):
+		print("Opening " + self.name + " for: " + str(unlocktime) + "sec")
+		GPIO.output(self.pin,GPIO.LOW)
+		time.sleep(unlocktime)
+		print("Locking " + self.name + " trigger")
+		GPIO.output(self.pin,GPIO.HIGH)
+
+class gate:
+	personTime = 10
+	toggle_length = .3
+
+	def __init__(self, name, pins):
+		self.name = name
+		self.pinArray = pins
+		for x in pins:
+			GPIO.setup(self.pinArray[x],GPIO.OUT)
+			GPIO.output(self.pinArray[x],GPIO.HIGH)
+		pass
+
+	def open(self):
+		print("OPEN FUNCTION STARTING " + self.name)
+		GPIO.output(self.pinArray["open"],GPIO.LOW)
+		time.sleep(self.toggle_length)
+		print("Releasing " + self.name + " trigger")
+		GPIO.output(self.pinArray["open"],GPIO.HIGH)
+		pass
+
+	def close(self):
+		print("CLOSE FUNCTION STARTING " + self.name)
+		GPIO.output(self.pinArray["close"],GPIO.LOW)
+		time.sleep(self.toggle_length)
+		print("Releasing " + self.name + " trigger")
+		GPIO.output(self.pinArray["close"],GPIO.HIGH)
+		pass
+
+	def stop(self, stoptime=toggle_length):
+		print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
+		GPIO.output(self.pinArray["stop"],GPIO.LOW)
+		time.sleep(stoptime)
+		print("Releasing " + self.name + " trigger")
+		GPIO.output(self.pinArray["stop"],GPIO.HIGH)
+		pass
+
+	def personOpen(self, openLength=4):
+		print("PERSONOPEN FUNCTION STARTING " + self.name + " for: " + str(self.personTime) + "sec")
+		self.open()
+		time.sleep(openLength)
+		self.stop(self.personTime)
+		print("Closing " + self.name)
+		self.close()
+		pass
+
+def gpioCleanup():
+	GPIO.cleanup()
+	print("cleaned up rpi GPIO pins")
+
+
+#######MQTT#######
 
 # Configure the required parameters for the MQTT broker
 mqtt_settings = Settings.MQTT(host="10.10.10.3")
@@ -173,9 +245,36 @@ if __name__ == '__main__' :
 		'''
 		con = db_connect()
 		cur = con.cursor()
+		
+		'''
+		Loop waiting for keypad input. Perform action based on returned access level
+		'''
 		while True:
 			keypad = input("Enter Access Code: ")
-			logic(keypad)
+			# logic(keypad)
+			accessLevel = search_code(con, keypad)
+			if accessLevel == "gate":
+				print("gate open")
+				gate.open()
+				catt_gate.open()
+			elif accessLevel == "owner":
+				print("owner")
+				gate.personOpen()
+			elif accessLevel == "lock":
+				print("lock open")
+				exPkgLck.open(10)
+			elif accessLevel == "close":
+				print("closing Gate")
+				gate.close()
+				catt_gate.closed()
+			elif accessLevel == "stop":
+				print("stopping gate")
+				gate.stop(2)
+				catt_gate.stopped()
+			else:
+				#TODO: flash lights like an angry old man
+				print("no hits found for either access level or code")
+				pass
 			
 	finally:
 		gpioCleanup()
