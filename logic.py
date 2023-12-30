@@ -245,7 +245,7 @@ if __name__ == '__main__' :
 
 	TODO: 	add Ringer logic (ABCD)
 			Confirm 4X4 keypad configuration and order from https://www.oitkeypad.com/Site/PDF/MVP-15-hr.pdf
-			Send result of db check to HomeAssistant
+			
 
 	'''
 
