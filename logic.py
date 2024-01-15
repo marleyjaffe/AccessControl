@@ -44,6 +44,9 @@ kbd_inside.grab()
 #set initial keypad string
 keypad_string = ''
 
+keypad_string_timeout = 10
+keypad_last_pressed_time = time.time()
+
 #ASCII Mapping for Inside Keypad
 inside_scancodes = {
 	# Scancode: ASCIICode
@@ -60,7 +63,10 @@ outside_scancodes = {
 
 async def keypad(device, location):
 	global keypad_string
+	global keypad_string_timeout
+	global keypad_last_pressed_time
 	async for event in device.async_read_loop():
+		
 		if event.type == evdev.ecodes.EV_KEY:
 			# if location	== 'inside':
 			data = evdev.categorize(event)
@@ -105,9 +111,23 @@ async def keypad(device, location):
 					print(keypressed)
 					keypad_string = keypad_string[:-1]
 				else:
-					print(keypressed)
+					print('key pressed: ', keypressed)
 					try:
-						keypad_string += keypressed
+						print('len:', len(keypad_string))
+						print('time:', keypad_last_pressed_time)
+						if len(keypad_string) <= 9:
+							print('timemath: ', time.time() - keypad_last_pressed_time)
+							if time.time() - keypad_last_pressed_time <= keypad_string_timeout:
+								keypad_last_pressed_time = time.time()
+								print('in loop', keypad_last_pressed_time)
+								keypad_string += keypressed
+							else:
+								print('in timeout section')
+								keypad_last_pressed_time = time.time()
+								keypad_string = keypressed
+						else:
+							keypad_last_pressed_time = time.time()
+							keypad_string = keypressed
 					except TypeError:
 						continue
 					except:
