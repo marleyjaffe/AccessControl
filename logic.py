@@ -20,8 +20,12 @@ import RPi.GPIO as GPIO
 
 #MQTT Imports
 from ha_mqtt_discoverable import Settings, DeviceInfo
-from ha_mqtt_discoverable.sensors import Cover, CoverInfo, Button, ButtonInfo, Text, TextInfo, BinarySensor, BinarySensorInfo
+from ha_mqtt_discoverable.sensors import Cover, CoverInfo, Button, ButtonInfo, Text, TextInfo, BinarySensor, BinarySensorInfo, DeviceTriggerInfo, DeviceTrigger
 from paho.mqtt.client import Client, MQTTMessage
+
+#Keyboard Imports
+import asyncio, evdev
+from evdev import InputDevice, categorize, ecodes
 
 #set pin num variables
 O_PIN = 12
@@ -29,18 +33,123 @@ C_PIN = 13
 S_PIN = 15
 L_PIN = 11
 
+#Keyboard device mapping
+kbd_outside = evdev.InputDevice('/dev/input/by-path/platform-3f980000.usb-usb-0:1.2:1.0-event-kbd')
+kbd_inside = evdev.InputDevice('/dev/input/by-path/platform-3f980000.usb-usb-0:1.3:1.0-event-kbd')
+
+#prevent other applications from receiveing keypad input
+kbd_outside.grab()
+kbd_inside.grab()
+
+#set initial keypad string
+keypad_string = ''
+
+#ASCII Mapping for Inside Keypad
+inside_scancodes = {
+	# Scancode: ASCIICode
+	2: u'1', 3: u'2', 4: u'3', 5: u'4', 6: u'5', 7: u'6', 8: u'7', 9: u'8', 10: u'9', 11: u'0', 
+	28: u'ENTR', 14: u'*', 30: u'OPEN', 48: u'STOP', 46: u'CLOSE', 32: u'MAILBOX'
+}
+
+#ASCII Mapping for Outside Keypad
+outside_scancodes = {
+	# Scancode: ASCIICode
+	2: u'1', 3: u'2', 4: u'3', 5: u'4', 6: u'5', 7: u'6', 8: u'7', 9: u'8', 10: u'9', 11: u'0', 
+	28: u'ENTR', 14: u'*', 30: u'A', 48: u'B', 46: u'C', 32: u'D'
+}
+
+async def keypad(device, location):
+	global keypad_string
+	async for event in device.async_read_loop():
+		if event.type == evdev.ecodes.EV_KEY:
+			# if location	== 'inside':
+			data = evdev.categorize(event)
+			if data.keystate == 0: # up events only
+				if location == 'inside':
+					keypressed = inside_scancodes.get(data.scancode)
+				elif location == 'outside':
+					keypressed = outside_scancodes.get(data.scancode)
+				
+				if keypressed == 'ENTR':
+					logic(keypad_string)
+					keypad_string = ''
+				elif keypressed == 'OPEN':
+					gate.open()
+					print(keypressed)
+					keypad_string = ''
+				elif keypressed == 'CLOSE':
+					gate.close()
+					print(keypressed)
+					keypad_string = ''
+				elif keypressed == 'STOP':
+					gate.stop(2)
+					print(keypressed)
+					keypad_string = ''
+				elif keypressed == 'MAILBOX':
+					print(keypressed)
+					exPkgLck.open(10)
+					keypad_string = ''
+				elif keypressed == 'A':
+					print(keypressed)
+					keypad_string = ''
+				elif keypressed == 'B':
+					print(keypressed)
+					keypad_string = ''
+				elif keypressed == 'C':
+					print(keypressed)
+					keypad_string = ''
+				elif keypressed == 'D':
+					print(keypressed)
+					keypad_string = ''
+				elif keypressed == '*':
+					print(keypressed)
+					keypad_string = keypad_string[:-1]
+				else:
+					print(keypressed)
+					try:
+						keypad_string += keypressed
+					except TypeError:
+						continue
+					except:
+						print("keypad data error")
+
+
+# async def outside_keypad(device):
+# 	global outside_keypad_string
+# 	async for event in device.async_read_loop():
+# 		global outside_keypad_string
+# 		if event.type == evdev.ecodes.EV_KEY:
+# 			data = evdev.categorize(event)
+# 			if data.keystate == 0: # up events only
+# 				keypressed = outside_scancodes.get(data.scancode)
+# 				if keypressed == 'ENTR':
+# 					logic(outside_keypad_string)
+# 					outside_keypad_string = ''
+# 				elif keypressed == 'A':
+# 					print(keypressed)
+# 					outside_keypad_string = ''
+# 				elif keypressed == 'B':
+# 					print(keypressed)
+# 					outside_keypad_string = ''
+# 				else:
+# 					# print(keypressed)
+# 					try:
+# 						outside_keypad_string += keypressed
+# 					except TypeError:
+# 						print("scancode not added")
+# 					except:
+# 						print("other error")
+
 #pin numbers (BOARD) or the Broadcom GPIO numbers (BCM)
 #https://pi4j.com/1.2/pins/model-b-rev2.html
 GPIO.setmode(GPIO.BOARD)
 
-
 def logic(keypad_input):
 	accessLevel = search_code(con, keypad_input)
-
+	catt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input})
 	if accessLevel == "gate":
 		print("gate open")
 		gate.open()
-		catt_gate.open()
 	elif accessLevel == "owner":
 		print("owner")
 		gate.personOpen()
@@ -55,11 +164,16 @@ def logic(keypad_input):
 		print("stopping gate")
 		gate.stop(2)
 		catt_gate.stopped()
+	elif accessLevel == "party":
+		gate.party()
 	else:
 		#TODO: flash lights like an angry old man
 		print("no hits found for either access level or code")
 		pass
 
+#TODO build ring function
+def outside_ring(keypad_input):
+	ringer
 
 class lock:
 	default_time = 15
@@ -91,22 +205,33 @@ class gate:
 		pass
 
 	def open(self):
+		# open_gate_trigger.trigger()
 		print("OPEN FUNCTION STARTING " + self.name)
+		# let HA know that the cover is opening
+		catt_gate.opening()
 		GPIO.output(self.pinArray["open"],GPIO.LOW)
 		time.sleep(self.toggle_length)
 		print("Releasing " + self.name + " trigger")
 		GPIO.output(self.pinArray["open"],GPIO.HIGH)
+		# Let HA know that the cover was opened
+		catt_gate.open()
 		pass
 
 	def close(self):
 		print("CLOSE FUNCTION STARTING " + self.name)
+		# let HA know that the cover is closing
+		catt_gate.closing()
 		GPIO.output(self.pinArray["close"],GPIO.LOW)
 		time.sleep(self.toggle_length)
 		print("Releasing " + self.name + " trigger")
 		GPIO.output(self.pinArray["close"],GPIO.HIGH)
+		# Let HA know that the cover was closed
+		catt_gate.closed()
 		pass
 
 	def stop(self, stoptime=toggle_length):
+		# Let HA know that the cover was stopped
+		catt_gate.stopped()
 		print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
 		GPIO.output(self.pinArray["stop"],GPIO.LOW)
 		time.sleep(stoptime)
@@ -122,6 +247,11 @@ class gate:
 		print("Closing " + self.name)
 		self.close()
 		pass
+
+	def party(self, openLength=4):
+		self.open()
+		time.sleep(openLength)
+		self.stop()
 
 def gpioCleanup():
 	GPIO.cleanup()
@@ -147,24 +277,14 @@ gate_settings = Settings(mqtt=mqtt_settings, entity=gate_info)
 def gate_callback(client: Client, user_data, message: MQTTMessage):
 	payload = message.payload.decode()
 	if payload == "OPEN":
-		# let HA know that the cover is opening
-		catt_gate.opening()
 		# call function to open cover
 		gate.open()
-		# Let HA know that the cover was opened
-		catt_gate.open()
 	if payload == "CLOSE":
-		# let HA know that the cover is closing
-		catt_gate.closing()
 		# call function to close the cover
 		gate.close()
-		# Let HA know that the cover was closed
-		catt_gate.closed()
 	if payload == "STOP":
 		# call function to stop the cover
 		gate.stop()
-		# Let HA know that the cover was stopped
-		catt_gate.stopped()
 
 # Instantiate the cover
 catt_gate = Cover(gate_settings, gate_callback, user_data)
@@ -229,9 +349,9 @@ catt_accesscode = BinarySensor(AccessCodeUsed_settings)
 # Publish the button's discoverability message to let HA automatically notice it
 catt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup"})
 
-
-
-
+# open_gate_trigger_into = DeviceTriggerInfo(name="Open Gate", type="gate", subtype="open", unique_id="open_gate_trigger", device=device_info)
+# open_gate_trigger_settings = Settings(mqtt=mqtt_settings, entity=open_gate_trigger_into)
+# open_gate_trigger = DeviceTrigger(open_gate_trigger_settings)
 
 if __name__ == '__main__' :
 	'''
@@ -269,42 +389,14 @@ if __name__ == '__main__' :
 		'''
 		Loop waiting for keypad input. Perform action based on returned access level
 		'''
-		while True:
-			keypad = input("Enter Access Code: ")
-			# logic(keypad)
-			accessLevel = search_code(con, keypad)
-			catt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad})
-			# catt_accesscode.set_text(keypad)
-			# catt_accesscode.set_text(accessLevel)
-			if accessLevel == "gate":
-				print("gate open")
-				gate.open()
-				catt_gate.open()
-			elif accessLevel == "owner":
-				print("owner")
-				gate.personOpen()
-			elif accessLevel == "lock":
-				print("lock open")
-				exPkgLck.open(10)
-			elif accessLevel == "close":
-				print("closing Gate")
-				gate.close()
-				catt_gate.closed()
-			elif accessLevel == "stop":
-				print("stopping gate")
-				gate.stop(2)
-				catt_gate.stopped()
-			else:
-				#TODO: flash lights like an angry old man
-				print("no hits found for either access level or code")
-				pass
-			
+		asyncio.ensure_future(keypad(kbd_inside, 'inside'))
+		asyncio.ensure_future(keypad(kbd_outside, 'outside'))
+
+		loop = asyncio.get_event_loop()
+		loop.run_forever()
+	except KeyboardInterrupt:
+		print("exiting nicely via keyboard interrupt")
+	except:
+		print("other exit")	
 	finally:
 		gpioCleanup()
-
-
-
-
-
-
-
