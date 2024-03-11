@@ -134,7 +134,6 @@ def update_name(con, passedCode, newName):
 
 '''
 removes code from sqlite db
-TODO: make function commit
 '''
 def delete_code(con, passedCode):
 	'''
