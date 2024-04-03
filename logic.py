@@ -34,6 +34,11 @@ C_PIN = 13
 S_PIN = 19
 L_PIN = 26
 
+gpioOpen = gpiozero.OutputDevice(6, active_high=True, initial_value=False)
+gpioClose = gpiozero.OutputDevice(13, active_high=True, initial_value=False)
+gpioStop = gpiozero.OutputDevice(19, active_high=True, initial_value=False)
+gpioLock = gpiozero.OutputDevice(26, active_high=True, initial_value=False)
+
 #Keyboard device mapping
 kbd_outside = evdev.InputDevice('/dev/input/by-path/keypad1')
 kbd_inside =  evdev.InputDevice('/dev/input/by-path/keypad2')
@@ -195,7 +200,7 @@ def outside_ring(keypad_input):
 
 class lock:
 	default_time = 15
-	gpioLock = gpiozero.OutputDevice(26, active_high=True, initial_value=False)
+#	gpioLock = gpiozero.OutputDevice(26, active_high=True, initial_value=False)
 	
 	def __init__(self, name, gpioNumber):
 		self.name = name
@@ -213,9 +218,9 @@ class lock:
 class gate:
 	personTime = 10
 	toggle_length = .3
-	gpioOpen = gpiozero.OutputDevice(6, active_high=True, initial_value=False)
-	gpioClose = gpiozero.OutputDevice(13, active_high=True, initial_value=False)
-	gpioStop = gpiozero.OutputDevice(19, active_high=True, initial_value=False)
+#	gpioOpen = gpiozero.OutputDevice(6, active_high=True, initial_value=False)
+#	gpioClose = gpiozero.OutputDevice(13, active_high=True, initial_value=False)
+#	gpioStop = gpiozero.OutputDevice(19, active_high=True, initial_value=False)
 	
 
 	def __init__(self, name, pins):
