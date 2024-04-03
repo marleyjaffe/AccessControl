@@ -16,7 +16,8 @@ import json
 import logging
 import random
 import time
-import RPi.GPIO as GPIO
+import gpiozero
+
 
 #MQTT Imports
 from ha_mqtt_discoverable import Settings, DeviceInfo
@@ -28,14 +29,14 @@ import asyncio, evdev
 from evdev import InputDevice, categorize, ecodes
 
 #set pin num variables
-O_PIN = 12
+O_PIN = 6
 C_PIN = 13
-S_PIN = 15
-L_PIN = 11
+S_PIN = 19
+L_PIN = 26
 
 #Keyboard device mapping
-kbd_outside = evdev.InputDevice('/dev/input/by-path/platform-3f980000.usb-usb-0:1.2:1.0-event-kbd')
-kbd_inside = evdev.InputDevice('/dev/input/by-path/platform-3f980000.usb-usb-0:1.3:1.0-event-kbd')
+kbd_outside = evdev.InputDevice('/dev/input/by-path/keypad1')
+kbd_inside =  evdev.InputDevice('/dev/input/by-path/keypad2')
 
 #prevent other applications from receiveing keypad input
 kbd_outside.grab()
@@ -160,9 +161,6 @@ async def keypad(device, location):
 # 					except:
 # 						print("other error")
 
-#pin numbers (BOARD) or the Broadcom GPIO numbers (BCM)
-#https://pi4j.com/1.2/pins/model-b-rev2.html
-GPIO.setmode(GPIO.BOARD)
 
 def logic(keypad_input):
 	accessLevel = search_code(con, keypad_input)
@@ -197,42 +195,46 @@ def outside_ring(keypad_input):
 
 class lock:
 	default_time = 15
-
+	gpioLock = gpiozero.OutputDevice(26, active_high=True, initial_value=False)
+	
 	def __init__(self, name, gpioNumber):
 		self.name = name
 		self.pin = gpioNumber
-		GPIO.setup(self.pin,GPIO.OUT)
-		GPIO.output(self.pin,GPIO.HIGH)
+	#	gpioLock = gpiozero.OutputDevice(self.pin, active_high=True, initial_value=False)
 		pass
 
 	def open(self, unlocktime=default_time):
 		print("Opening " + self.name + " for: " + str(unlocktime) + "sec")
-		GPIO.output(self.pin,GPIO.LOW)
+		gpioLock.on()
 		time.sleep(unlocktime)
 		print("Locking " + self.name + " trigger")
-		GPIO.output(self.pin,GPIO.HIGH)
+		gpioLock.off()
 
 class gate:
 	personTime = 10
 	toggle_length = .3
+	gpioOpen = gpiozero.OutputDevice(6, active_high=True, initial_value=False)
+	gpioClose = gpiozero.OutputDevice(13, active_high=True, initial_value=False)
+	gpioStop = gpiozero.OutputDevice(19, active_high=True, initial_value=False)
+	
 
 	def __init__(self, name, pins):
 		self.name = name
 		self.pinArray = pins
-		for x in pins:
-			GPIO.setup(self.pinArray[x],GPIO.OUT)
-			GPIO.output(self.pinArray[x],GPIO.HIGH)
-		pass
+	#	gpioOpen = gpiozero.OutputDevice(self.pinArray["open"], active_high=True, initial_value=False)
+	#	gpioClose = gpiozero.OutputDevice(self.pinArray["close"], active_high=True, initial_value=False)
+	#	gpioStop = gpiozero.OutputDevice(self.pinArray["stop"], active_high=True, initial_value=False)
+
 
 	def open(self):
 		# open_gate_trigger.trigger()
 		print("OPEN FUNCTION STARTING " + self.name)
 		# let HA know that the cover is opening
 		catt_gate.opening()
-		GPIO.output(self.pinArray["open"],GPIO.LOW)
+		gpioOpen.on()
 		time.sleep(self.toggle_length)
 		print("Releasing " + self.name + " trigger")
-		GPIO.output(self.pinArray["open"],GPIO.HIGH)
+		gpioOpen.off()
 		# Let HA know that the cover was opened
 		catt_gate.open()
 		pass
@@ -241,10 +243,10 @@ class gate:
 		print("CLOSE FUNCTION STARTING " + self.name)
 		# let HA know that the cover is closing
 		catt_gate.closing()
-		GPIO.output(self.pinArray["close"],GPIO.LOW)
+		gpioClose.on()
 		time.sleep(self.toggle_length)
 		print("Releasing " + self.name + " trigger")
-		GPIO.output(self.pinArray["close"],GPIO.HIGH)
+		gpioClose.off()
 		# Let HA know that the cover was closed
 		catt_gate.closed()
 		pass
@@ -253,10 +255,10 @@ class gate:
 		# Let HA know that the cover was stopped
 		catt_gate.stopped()
 		print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
-		GPIO.output(self.pinArray["stop"],GPIO.LOW)
+		gpioStop.on()
 		time.sleep(stoptime)
 		print("Releasing " + self.name + " trigger")
-		GPIO.output(self.pinArray["stop"],GPIO.HIGH)
+		gpioStop.off()
 		pass
 
 	def personOpen(self, openLength=4):
@@ -274,8 +276,7 @@ class gate:
 		self.stop()
 
 def gpioCleanup():
-	GPIO.cleanup()
-	print("cleaned up rpi GPIO pins")
+	print("clean up not necessary with new library")
 
 
 #######MQTT#######
