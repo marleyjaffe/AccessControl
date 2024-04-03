@@ -21,10 +21,10 @@ sudo usermod -aG docker $USER
 newgrp docker
 
 ### Use this to build and run (run in forground)
-docker build -t AccessControl . && docker run --device /dev/gpiochip4:/dev/gpiochip4 --device /dev/input/by-path/keypad1:/dev/input/by-path/keypad1 --device /dev/input/by-path/keypad2:/dev/input/by-path/keypad2 AccessControl
+docker build -t accesscontrol . && docker run --device /dev/gpiochip4:/dev/gpiochip4 --device /dev/input/by-path/keypad1:/dev/input/by-path/keypad1 --device /dev/input/by-path/keypad2:/dev/input/by-path/keypad2 accesscontrol
 
 ### Use to run prebuilt in background
-docker run -d --device /dev/gpiochip4:/dev/gpiochip4 --device /dev/input/by-path/keypad1:/dev/input/by-path/keypad1 --device /dev/input/by-path/keypad2:/dev/input/by-path/keypad2 AccessControl --restart always --name AccessControl
+docker run -d --device /dev/gpiochip4:/dev/gpiochip4 --device /dev/input/by-path/keypad1:/dev/input/by-path/keypad1 --device /dev/input/by-path/keypad2:/dev/input/by-path/keypad2 --restart always --name AccessControl accesscontrol
 
 ## Install Steps
 curl https://pyenv.run | bash
