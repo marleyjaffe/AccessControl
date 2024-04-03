@@ -7,8 +7,24 @@ It will create, update and search codes against SQLite DB. Keyboard input it wil
 ## Physical Setup
 GPIO pins should be hooked up to external relay to interface with gate motor controller and automatic door lock.
 
-## Virtual Setup
+## Docker Setup
+First, make soft-links to the keyboards since you can't pass paths that have variables:
+ln -s /dev/input/by-path/platform-xhci-hcd.1-usb-0:2:1.0-event-kbd /dev/input/by-path/keypad1
+Add user to docker groups:
+### Create docker group (should already exist)
+sudo groupadd docker
 
+### Add user to docker group
+sudo usermod -aG docker $USER
+
+### Log in to new group (alternatively restart the Pi)
+newgrp docker
+
+### Use this to build and run (run in forground)
+docker build -t AccessControl . && docker run --device /dev/gpiochip4:/dev/gpiochip4 --device /dev/input/by-path/keypad1:/dev/input/by-path/keypad1 --device /dev/input/by-path/keypad2:/dev/input/by-path/keypad2 AccessControl
+
+### Use to run prebuilt in background
+docker run -d --device /dev/gpiochip4:/dev/gpiochip4 --device /dev/input/by-path/keypad1:/dev/input/by-path/keypad1 --device /dev/input/by-path/keypad2:/dev/input/by-path/keypad2 AccessControl --restart always --name AccessControl
 
 ## Install Steps
 curl https://pyenv.run | bash
