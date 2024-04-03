@@ -34,10 +34,10 @@ C_PIN = 13
 S_PIN = 19
 L_PIN = 26
 
-gpioOpen = gpiozero.OutputDevice(6, active_high=True, initial_value=False)
-gpioClose = gpiozero.OutputDevice(13, active_high=True, initial_value=False)
-gpioStop = gpiozero.OutputDevice(19, active_high=True, initial_value=False)
-gpioLock = gpiozero.OutputDevice(26, active_high=True, initial_value=False)
+gpioOpen = gpiozero.OutputDevice(O_PIN, active_high=True, initial_value=False)
+gpioClose = gpiozero.OutputDevice(C_PIN, active_high=True, initial_value=False)
+gpioStop = gpiozero.OutputDevice(S_PIN, active_high=True, initial_value=False)
+gpioLock = gpiozero.OutputDevice(L_PIN, active_high=True, initial_value=False)
 
 #Keyboard device mapping
 kbd_outside = evdev.InputDevice('/dev/input/by-path/keypad1')
