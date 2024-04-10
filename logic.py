@@ -287,10 +287,10 @@ def gpioCleanup():
 #######MQTT#######
 
 # Configure the required parameters for the MQTT broker
-mqtt_settings = Settings.MQTT(host="10.10.10.3")
+mqtt_settings = Settings.MQTT(host="192.168.1.7")
 
 # Define the device. At least one of `identifiers` or `connections` must be supplied
-device_info = DeviceInfo(name="Catt-AccessControl", identifiers="catt-gatepi")
+device_info = DeviceInfo(name="Catt-AccessControl", identifiers="liq-gatepi")
 
 # Define an optional object to be passed back to the callback
 user_data = "Some custom data"
