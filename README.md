@@ -9,8 +9,10 @@ GPIO pins should be hooked up to external relay to interface with gate motor con
 
 ## Docker Setup
 First, make soft-links to the keyboards since you can't pass paths that have variables:
-ln -s /dev/input/by-path/platform-xhci-hcd.1-usb-0:2:1.0-event-kbd /dev/input/by-path/keypad1
-Add user to docker groups:
+Add the following to `sudo crontab -e` to keep persistent through reboots:
+@reboot ln -s /dev/input/by-path/platform-xhci-hcd.1-usb-0:2:1.0-event-kbd /dev/input/by-path/keypad1
+@reboot ln -s /dev/input/by-path/platform-xhci-hcd.0-usb-0:2:1.0-event-kbd /dev/input/by-path/keypad2
+
 ### Create docker group (should already exist)
 sudo groupadd docker
 
