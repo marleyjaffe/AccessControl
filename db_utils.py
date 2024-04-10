@@ -74,6 +74,35 @@ def search_code(con, passedcode):
 		print("No results found in table. Exiting function")
 		return
 
+def update_code(con, passedCode, newCode):
+	'''
+	Name:			update_code
+
+	Description:	Updates PinCode's PinCode
+
+	Input:			con: 				SQLite Connection
+					passedcode:			pincode to update
+					newCode:			number to update pincode to
+
+	Actions:		Checks if passedcode is valid.
+					SQL update pincode where pincode = passed value.
+					
+	Return:			Return False if passed code is not in db
+					Returns True if function success
+	'''
+
+	if search_code(con, passedCode) is None:
+		return False
+	else:
+		sql = """
+			UPDATE codes 
+			SET code = ?
+			WHERE code = ?"""
+		cur = con.cursor()
+		cur.execute(sql, (newCode, passedCode))
+		con.commit()
+		return True
+	
 def update_AccessLevel(con, passedCode, newAccessLevel):
 	'''
 	Name:			update_AccessLevel
