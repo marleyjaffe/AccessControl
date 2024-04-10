@@ -168,8 +168,8 @@ async def keypad(device, location):
 
 
 def logic(keypad_input):
-	accessLevel = search_code(con, keypad_input)
-	catt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input})
+	accessLevel, codeName = search_code(con, keypad_input)
+	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName})
 	if accessLevel == "gate":
 		print("gate open")
 		gate.open()
@@ -290,13 +290,13 @@ def gpioCleanup():
 mqtt_settings = Settings.MQTT(host="192.168.1.7")
 
 # Define the device. At least one of `identifiers` or `connections` must be supplied
-device_info = DeviceInfo(name="Catt-AccessControl", identifiers="liq-gatepi")
+device_info = DeviceInfo(name="Liq-AccessControl", identifiers="liq-gatepi")
 
 # Define an optional object to be passed back to the callback
 user_data = "Some custom data"
 
 # Information about the cover
-gate_info = CoverInfo(name="catt-gatepi-gate", unique_id="catt-gatepi-gate", device=device_info)
+gate_info = CoverInfo(name="liq-gatepi-gate", unique_id="liq-gatepi-gate", device=device_info)
 gate_settings = Settings(mqtt=mqtt_settings, entity=gate_info)
 
 # To receive state commands from HA, define a callback function:
@@ -321,7 +321,7 @@ catt_gate.closed()
 
 ## Package Drop Door
 # Information about the button
-package_info = ButtonInfo(name="catt-gatepi-package", unique_id="catt-gatepi-packageLock", device=device_info)
+package_info = ButtonInfo(name="liq-gatepi-package", unique_id="liq-gatepi-packageLock", device=device_info)
 package_settings = Settings(mqtt=mqtt_settings, entity=package_info)
 
 # To receive button commands from HA, define a callback function:
@@ -337,7 +337,7 @@ catt_package.write_config()
 
 ## Person Gate
 # Information about the button
-gate_person_info = ButtonInfo(name="catt-gatepi-person", unique_id="catt-gatepi-person", device=device_info)
+gate_person_info = ButtonInfo(name="liq-gatepi-person", unique_id="liq-gatepi-person", device=device_info)
 gate_person_settings = Settings(mqtt=mqtt_settings, entity=gate_person_info)
 
 # To receive button commands from HA, define a callback function:
@@ -357,7 +357,7 @@ catt_person.write_config()
 
 ## AccessCode Used
 # Information about the access code text
-AccessCodeUsed = BinarySensorInfo(name="access-code-entered", unique_id="catt-gatepi-accesscode-sensor", device=device_info)
+AccessCodeUsed = BinarySensorInfo(name="access-code-entered", unique_id="liq-gatepi-accesscode-sensor", device=device_info)
 AccessCodeUsed_settings = Settings(mqtt=mqtt_settings, entity=AccessCodeUsed)
 
 # # To receive button commands from HA, define a callback function:
@@ -366,14 +366,14 @@ AccessCodeUsed_settings = Settings(mqtt=mqtt_settings, entity=AccessCodeUsed)
 # 	logging.info(f"Received {text} from HA")
 # 	# do_some_custom_thing(text)
 # 	# Send an MQTT message to confirm to HA that the text was changed
-# 	catt_accesscode.set_text(text)
+# 	mqtt_accesscode.set_text(text)
 	
 
 # Instantiate the text
-catt_accesscode = BinarySensor(AccessCodeUsed_settings)
+mqtt_accesscode = BinarySensor(AccessCodeUsed_settings)
 
 # Publish the button's discoverability message to let HA automatically notice it
-catt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup"})
+mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup"})
 
 # open_gate_trigger_into = DeviceTriggerInfo(name="Open Gate", type="gate", subtype="open", unique_id="open_gate_trigger", device=device_info)
 # open_gate_trigger_settings = Settings(mqtt=mqtt_settings, entity=open_gate_trigger_into)
