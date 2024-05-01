@@ -433,7 +433,7 @@ if __name__ == '__main__' :
 		loop.run_forever()
 	except KeyboardInterrupt:
 		print("exiting nicely via keyboard interrupt")
-	except:
-		print("other exit")	
+	except Exception as error:
+		print("other exit: ", error)	
 	finally:
 		gpioCleanup()
