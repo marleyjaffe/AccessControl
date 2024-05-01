@@ -5,6 +5,7 @@ RUN apt install -y python3-pip python3-lgpio python3-libgpiod
 RUN pip3 install gpiozero --break-system-packages
 RUN pip3 install ha_mqtt_discoverable --break-system-packages
 RUN pip3 install evdev --break-system-packages
+RUN pip3 install tzdata --break-system-packages
 
 # RUN apt install -y python3-pip python3-lgpio python3-rgpio
 # RUN pip3 install RPi.GPIO

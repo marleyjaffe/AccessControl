@@ -18,6 +18,7 @@ import random
 import time
 import gpiozero
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 
@@ -29,6 +30,8 @@ from paho.mqtt.client import Client, MQTTMessage
 #Keyboard Imports
 import asyncio, evdev
 from evdev import InputDevice, categorize, ecodes
+
+tz = ZoneInfo('America/Los_Angeles')
 
 #set pin num variables
 O_PIN = 6
@@ -176,7 +179,7 @@ def logic(keypad_input):
 		accessLevel = "error"
 		codeName = "BadCode"
 	# mqtt_accesscode.set_text(codeName)
-	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone("America/Los_Angeles"))})
+	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
 	if accessLevel == "gate":
 		print("gate open")
 		gate.open()
@@ -381,7 +384,7 @@ mqtt_accesscode = BinarySensor(AccessCodeUsed_settings)
 
 # Publish the button's discoverability message to let HA automatically notice it
 # mqtt_accesscode.set_text(bootup)
-mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone("America/Los_Angeles"))})
+mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone(tz))})
 
 # open_gate_trigger_into = DeviceTriggerInfo(name="Open Gate", type="gate", subtype="open", unique_id="open_gate_trigger", device=device_info)
 # open_gate_trigger_settings = Settings(mqtt=mqtt_settings, entity=open_gate_trigger_into)
