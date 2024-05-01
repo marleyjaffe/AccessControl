@@ -20,6 +20,7 @@ import gpiozero
 from datetime import datetime
 
 
+
 #MQTT Imports
 from ha_mqtt_discoverable import Settings, DeviceInfo
 from ha_mqtt_discoverable.sensors import Cover, CoverInfo, Button, ButtonInfo, Text, TextInfo, BinarySensor, BinarySensorInfo, DeviceTriggerInfo, DeviceTrigger
@@ -169,9 +170,13 @@ async def keypad(device, location):
 
 
 def logic(keypad_input):
-	accessLevel, codeName = search_code(con, keypad_input)
-	mqtt_accesscode.set_text(codeName)
-	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": datetime.now()})
+	try:
+		accessLevel, codeName = search_code(con, keypad_input)
+	except:
+		accessLevel = "error"
+		codeName = "BadCode"
+	# mqtt_accesscode.set_text(codeName)
+	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now())})
 	if accessLevel == "gate":
 		print("gate open")
 		gate.open()
@@ -375,8 +380,8 @@ AccessCodeUsed_settings = Settings(mqtt=mqtt_settings, entity=AccessCodeUsed)
 mqtt_accesscode = BinarySensor(AccessCodeUsed_settings)
 
 # Publish the button's discoverability message to let HA automatically notice it
-mqtt_accesscode.set_text("bootup")
-mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": datetime.now()})
+# mqtt_accesscode.set_text(bootup)
+mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now())})
 
 # open_gate_trigger_into = DeviceTriggerInfo(name="Open Gate", type="gate", subtype="open", unique_id="open_gate_trigger", device=device_info)
 # open_gate_trigger_settings = Settings(mqtt=mqtt_settings, entity=open_gate_trigger_into)
