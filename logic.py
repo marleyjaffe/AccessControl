@@ -107,12 +107,16 @@ async def keypad(device, location):
 					exPkgLck.open(10)
 					keypad_string = ''
 				elif keypressed == 'A':
+					doorbell(keypressed)
 					keypad_string = ''
 				elif keypressed == 'B':
+					doorbell(keypressed)
 					keypad_string = ''
 				elif keypressed == 'C':
+					doorbell(keypressed)
 					keypad_string = ''
 				elif keypressed == 'D':
+					doorbell(keypressed)     
 					keypad_string = ''
 				elif keypressed == '*':
 					keypad_string = keypad_string[:-1]
@@ -204,8 +208,9 @@ def logic(keypad_input):
 		pass
 
 #TODO build ring function
-def outside_ring(keypad_input):
-	ringer
+def doorbell(keypad_input):
+	print("Datetime", str(datetime.now().astimezone(tz)), " Doorbell pressed: ", keypad_input)
+	pass
 
 class lock:
 	default_time = 15
