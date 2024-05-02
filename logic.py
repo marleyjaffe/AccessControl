@@ -84,65 +84,62 @@ async def keypad(device, location):
 			if data.keystate == 0: # up events only
 				if location == 'inside':
 					keypressed = inside_scancodes.get(data.scancode)
+					print("Datetime", str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
 				elif location == 'outside':
 					keypressed = outside_scancodes.get(data.scancode)
-				
+					print("Datetime", str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
+				else:
+					print("Datetime", str(datetime.now().astimezone(tz))," ERROR - Keypad Location variable not found")
+
 				if keypressed == 'ENTR':
 					logic(keypad_string)
 					keypad_string = ''
 				elif keypressed == 'OPEN':
 					gate.open()
-					print(keypressed)
 					keypad_string = ''
 				elif keypressed == 'CLOSE':
 					gate.close()
-					print(keypressed)
 					keypad_string = ''
 				elif keypressed == 'STOP':
 					gate.stop(2)
-					print(keypressed)
 					keypad_string = ''
 				elif keypressed == 'MAILBOX':
-					print(keypressed)
 					exPkgLck.open(10)
 					keypad_string = ''
 				elif keypressed == 'A':
-					print(keypressed)
 					keypad_string = ''
 				elif keypressed == 'B':
-					print(keypressed)
 					keypad_string = ''
 				elif keypressed == 'C':
-					print(keypressed)
 					keypad_string = ''
 				elif keypressed == 'D':
-					print(keypressed)
 					keypad_string = ''
 				elif keypressed == '*':
-					print(keypressed)
 					keypad_string = keypad_string[:-1]
 				else:
-					print('key pressed: ', keypressed)
 					try:
-						print('len:', len(keypad_string))
-						print('time:', keypad_last_pressed_time)
+						# print('len:', len(keypad_string))
+						# print('time:', keypad_last_pressed_time)
 						if len(keypad_string) <= 9:
-							print('timemath: ', time.time() - keypad_last_pressed_time)
+							# print('timemath: ', time.time() - keypad_last_pressed_time)
 							if time.time() - keypad_last_pressed_time <= keypad_string_timeout:
 								keypad_last_pressed_time = time.time()
-								print('in loop', keypad_last_pressed_time)
+								# print('in loop', keypad_last_pressed_time)
 								keypad_string += keypressed
 							else:
-								print('in timeout section')
+								print("Datetime", str(datetime.now().astimezone(tz))," ERROR - keypad timeout occured")
 								keypad_last_pressed_time = time.time()
 								keypad_string = keypressed
 						else:
+							print("Datetime", str(datetime.now().astimezone(tz))," ERROR - keycode length exceeded")
 							keypad_last_pressed_time = time.time()
 							keypad_string = keypressed
-					except TypeError:
+					except TypeError as err:
+						# I believe these happen for every keypress
+						# print(f"Datetime {str(datetime.now().astimezone(tz))} Unexpected Type Error {err=}, {type(err)=}")
 						continue
-					except:
-						print("keypad data error")
+					except Exception as err:
+						print(f"Datetime {str(datetime.now().astimezone(tz))} Unexpected {err=}, {type(err)=}")
 
 
 # async def outside_keypad(device):
@@ -180,28 +177,30 @@ def logic(keypad_input):
 		codeName = "BadCode"
 	# mqtt_accesscode.set_text(codeName)
 	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
+	print("Datetime", str(datetime.now().astimezone(tz)), " Name:", codeName, " AccessCode: ", keypad_input, " AccessLevel: ", accessLevel)
 	if accessLevel == "gate":
-		print("gate open")
+		print("Datetime", str(datetime.now().astimezone(tz)), " OPEN function triggered")
 		gate.open()
-	elif accessLevel == "owner":
-		print("owner")
+	elif accessLevel == "delivery":
+		print("Datetime", str(datetime.now().astimezone(tz)), " DELIVERY function triggered")
 		gate.personOpen()
 	elif accessLevel == "lock":
-		print("lock open")
+		print("Datetime", str(datetime.now().astimezone(tz)), " LOCK function triggered")
 		exPkgLck.open(10)
 	elif accessLevel == "close":
-		print("closing Gate")
+		print("Datetime", str(datetime.now().astimezone(tz)), " CLOSE function triggered")
 		gate.close()
 		catt_gate.closed()
 	elif accessLevel == "stop":
-		print("stopping gate")
+		print("Datetime", str(datetime.now().astimezone(tz)), " STOP function triggered")
 		gate.stop(2)
 		catt_gate.stopped()
 	elif accessLevel == "party":
+		print("Datetime", str(datetime.now().astimezone(tz)), " PARTY function triggered")
 		gate.party()
 	else:
 		#TODO: flash lights like an angry old man
-		print("no hits found for either access level or code")
+		print("Datetime", str(datetime.now().astimezone(tz)), " ERROR - Access Level Missing not defined")
 		pass
 
 #TODO build ring function
@@ -219,10 +218,10 @@ class lock:
 		pass
 
 	def open(self, unlocktime=default_time):
-		print("Opening " + self.name + " for: " + str(unlocktime) + "sec")
+		# print("Opening " + self.name + " for: " + str(unlocktime) + "sec")
 		gpioLock.on()
 		time.sleep(unlocktime)
-		print("Locking " + self.name + " trigger")
+		# print("Locking " + self.name + " trigger")
 		gpioLock.off()
 
 class gate:
@@ -243,24 +242,24 @@ class gate:
 
 	def open(self):
 		# open_gate_trigger.trigger()
-		print("OPEN FUNCTION STARTING " + self.name)
+		# print("OPEN FUNCTION STARTING " + self.name)
 		# let HA know that the cover is opening
 		catt_gate.opening()
 		gpioOpen.on()
 		time.sleep(self.toggle_length)
-		print("Releasing " + self.name + " trigger")
+		# print("Releasing " + self.name + " trigger")
 		gpioOpen.off()
 		# Let HA know that the cover was opened
 		catt_gate.open()
 		pass
 
 	def close(self):
-		print("CLOSE FUNCTION STARTING " + self.name)
+		# print("CLOSE FUNCTION STARTING " + self.name)
 		# let HA know that the cover is closing
 		catt_gate.closing()
 		gpioClose.on()
 		time.sleep(self.toggle_length)
-		print("Releasing " + self.name + " trigger")
+		# print("Releasing " + self.name + " trigger")
 		gpioClose.off()
 		# Let HA know that the cover was closed
 		catt_gate.closed()
@@ -269,19 +268,19 @@ class gate:
 	def stop(self, stoptime=toggle_length):
 		# Let HA know that the cover was stopped
 		catt_gate.stopped()
-		print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
+		# print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
 		gpioStop.on()
 		time.sleep(stoptime)
-		print("Releasing " + self.name + " trigger")
+		# print("Releasing " + self.name + " trigger")
 		gpioStop.off()
 		pass
 
 	def personOpen(self, openLength=4):
-		print("PERSONOPEN FUNCTION STARTING " + self.name + " for: " + str(self.personTime) + "sec")
+		# print("PERSONOPEN FUNCTION STARTING " + self.name + " for: " + str(self.personTime) + "sec")
 		self.open()
 		time.sleep(openLength)
 		self.stop(self.personTime)
-		print("Closing " + self.name)
+		# print("Closing " + self.name)
 		self.close()
 		pass
 
@@ -291,7 +290,7 @@ class gate:
 		self.stop()
 
 def gpioCleanup():
-	print("clean up not necessary with new library")
+	print("Datetime", str(datetime.now().astimezone(tz)), " GPIO clean up not necessary with new library, EndOfFunction")
 
 
 #######MQTT#######
@@ -432,8 +431,8 @@ if __name__ == '__main__' :
 		loop = asyncio.get_event_loop()
 		loop.run_forever()
 	except KeyboardInterrupt:
-		print("exiting nicely via keyboard interrupt")
+		print("Datetime", str(datetime.now().astimezone(tz)), " Keyboard interrupt detected. Exiting nicely")
 	except Exception as error:
-		print("other exit: ", error)	
+		print("Datetime", str(datetime.now().astimezone(tz)), " other exit: ", error)	
 	finally:
 		gpioCleanup()
