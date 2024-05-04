@@ -68,7 +68,7 @@ def search_code(con, passedcode):
 	result = cur.fetchone()
 	if result is not None:
 		returnedCode, returnedName, returnedAccessLevel = result['code'], result['name'], result['accesslevel']
-		print("Code: ", returnedCode, " Name is: ", returnedName, " Level is: ", returnedAccessLevel)
+		#print("Code: ", returnedCode, " Name is: ", returnedName, " Level is: ", returnedAccessLevel)
 		return returnedAccessLevel, returnedName
 	else:
 		print("No results found in table. Exiting function")
