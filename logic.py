@@ -163,11 +163,10 @@ def logic(keypad_input):
 	elif accessLevel == "close":
 		print("Datetime", str(datetime.now().astimezone(tz)), " CLOSE function triggered")
 		gate.close()
-		catt_gate.closed()
 	elif accessLevel == "stop":
 		print("Datetime", str(datetime.now().astimezone(tz)), " STOP function triggered")
 		gate.stop(2)
-		catt_gate.stopped()
+		# catt_gate.stopped()
 	elif accessLevel == "party":
 		print("Datetime", str(datetime.now().astimezone(tz)), " PARTY function triggered")
 		gate.party()
@@ -214,29 +213,29 @@ class gate:
 		# open_gate_trigger.trigger()
 		# print("OPEN FUNCTION STARTING " + self.name)
 		# let HA know that the cover is opening
-		catt_gate.opening()
+		# catt_gate.opening()
 		gpioOpen.on()
 		time.sleep(self.toggle_length)
 		# print("Releasing " + self.name + " trigger")
 		gpioOpen.off()
 		# Let HA know that the cover was opened
-		catt_gate.open()
+		# catt_gate.open()
 
 	def close(self):
 		self.releaseStop()
 		# print("CLOSE FUNCTION STARTING " + self.name)
 		# let HA know that the cover is closing
-		catt_gate.closing()
+		# catt_gate.closing()
 		gpioClose.on()
 		time.sleep(self.toggle_length)
 		# print("Releasing " + self.name + " trigger")
 		gpioClose.off()
 		# Let HA know that the cover was closed
-		catt_gate.closed()
+		# catt_gate.closed()
 
 	def stop(self, stoptime=toggle_length):
 		# Let HA know that the cover was stopped
-		catt_gate.stopped()
+		# catt_gate.stopped()
 		# print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
 		
 		self.isStopped = True
@@ -306,12 +305,37 @@ def gate_callback(client: Client, user_data, message: MQTTMessage):
 		# call function to stop the cover
 		gate.stop()
 
-# Instantiate the cover
-catt_gate = Cover(gate_settings, gate_callback, user_data)
+def gate_open_callback(client: Client, user_data, message: MQTTMessage):
+	gate.open()
 
-# Set the initial state of the cover, which also makes it discoverable
-catt_gate.closed()
+gate_open_info = ButtonInfo(name="liq-gatepi-gate-open", unique_id="liq-gatepi-gate-open", device=device_info)
+gate_open_settings = Settings(mqtt=mqtt_settings, entity=gate_open_info)
+gate_open_button = Button(gate_open_settings, gate_open_callback, user_data)
+gate_open_button.write_config()
 
+def gate_close_callback(client: Client, user_data, message: MQTTMessage):
+	gate.close()
+
+gate_close_info = ButtonInfo(name="liq-gatepi-gate-close", unique_id="liq-gatepi-gate-close", device=device_info)
+gate_close_settings = Settings(mqtt=mqtt_settings, entity=gate_close_info)
+gate_close_button = Button(gate_close_settings, gate_close_callback, user_data)
+gate_close_button.write_config()
+
+def gate_stop_callback(client: Client, user_data, message: MQTTMessage):
+	gate.stop()
+
+gate_stop_info = ButtonInfo(name="liq-gatepi-gate-stop", unique_id="liq-gatepi-gate-stop", device=device_info)
+gate_stop_settings = Settings(mqtt=mqtt_settings, entity=gate_stop_info)
+gate_stop_button = Button(gate_stop_settings, gate_stop_callback, user_data)
+gate_stop_button.write_config()
+
+def gate_release_stop_callback(client: Client, user_data, message: MQTTMessage):
+	gate.releaseStop()
+
+gate_release_stop_info = ButtonInfo(name="liq-gatepi-gate-release_stop", unique_id="liq-gatepi-gate-release_stop", device=device_info)
+gate_release_stop_settings = Settings(mqtt=mqtt_settings, entity=gate_release_stop_info)
+gate_release_stop_button = Button(gate_release_stop_settings, gate_release_stop_callback, user_data)
+gate_release_stop_button.write_config()
 
 ## Package Drop Door
 # Information about the button
@@ -336,12 +360,8 @@ gate_person_settings = Settings(mqtt=mqtt_settings, entity=gate_person_info)
 
 # To receive button commands from HA, define a callback function:
 def person_callback(client: Client, user_data, message: MQTTMessage):
-	# Update MQTT status as opening
-	catt_gate.opening()
 	# Call gate person open function
 	gate.personOpen()
-	# Update MQTT status as Stopped
-	catt_gate.stopped()
 
 # Instantiate the button
 catt_person = Button(gate_person_settings, person_callback, user_data)
