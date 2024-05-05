@@ -10,13 +10,14 @@ Trigger Home Assistant Event (MQTT)
 # python 3.10
 
 from db_utils import *
-# from StreetAutomation import *
 
 import json
 import logging
 import random
 import time
 import gpiozero
+import asyncio
+import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -104,7 +105,7 @@ async def keypad(device, location):
 					gate.stop(2)
 					keypad_string = ''
 				elif keypressed == 'MAILBOX':
-					exPkgLck.open(10)
+					gate.releaseStop()
 					keypad_string = ''
 				elif keypressed == 'A':
 					keypad_string = ''
@@ -142,40 +143,12 @@ async def keypad(device, location):
 						print(f"Datetime {str(datetime.now().astimezone(tz))} Unexpected {err=}, {type(err)=}")
 
 
-# async def outside_keypad(device):
-# 	global outside_keypad_string
-# 	async for event in device.async_read_loop():
-# 		global outside_keypad_string
-# 		if event.type == evdev.ecodes.EV_KEY:
-# 			data = evdev.categorize(event)
-# 			if data.keystate == 0: # up events only
-# 				keypressed = outside_scancodes.get(data.scancode)
-# 				if keypressed == 'ENTR':
-# 					logic(outside_keypad_string)
-# 					outside_keypad_string = ''
-# 				elif keypressed == 'A':
-# 					print(keypressed)
-# 					outside_keypad_string = ''
-# 				elif keypressed == 'B':
-# 					print(keypressed)
-# 					outside_keypad_string = ''
-# 				else:
-# 					# print(keypressed)
-# 					try:
-# 						outside_keypad_string += keypressed
-# 					except TypeError:
-# 						print("scancode not added")
-# 					except:
-# 						print("other error")
-
-
 def logic(keypad_input):
 	try:
 		accessLevel, codeName = search_code(con, keypad_input)
 	except:
 		accessLevel = "error"
 		codeName = "BadCode"
-	# mqtt_accesscode.set_text(codeName)
 	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
 	print("Datetime", str(datetime.now().astimezone(tz)), " Name:", codeName, " AccessCode: ", keypad_input, " AccessLevel: ", accessLevel)
 	if accessLevel == "gate":
@@ -207,14 +180,15 @@ def logic(keypad_input):
 def outside_ring(keypad_input):
 	ringer
 
+def gpioCleanup():
+	print("Datetime", str(datetime.now().astimezone(tz)), " GPIO clean up not necessary with new library, EndOfFunction")
+
 class lock:
 	default_time = 15
-#	gpioLock = gpiozero.OutputDevice(26, active_high=True, initial_value=False)
 	
 	def __init__(self, name, gpioNumber):
 		self.name = name
 		self.pin = gpioNumber
-	#	gpioLock = gpiozero.OutputDevice(self.pin, active_high=True, initial_value=False)
 		pass
 
 	def open(self, unlocktime=default_time):
@@ -227,20 +201,16 @@ class lock:
 class gate:
 	personTime = 10
 	toggle_length = .3
-#	gpioOpen = gpiozero.OutputDevice(6, active_high=True, initial_value=False)
-#	gpioClose = gpiozero.OutputDevice(13, active_high=True, initial_value=False)
-#	gpioStop = gpiozero.OutputDevice(19, active_high=True, initial_value=False)
+	stop_hold_timeout = 60 * 5
 	
 
 	def __init__(self, name, pins):
 		self.name = name
 		self.pinArray = pins
-	#	gpioOpen = gpiozero.OutputDevice(self.pinArray["open"], active_high=True, initial_value=False)
-	#	gpioClose = gpiozero.OutputDevice(self.pinArray["close"], active_high=True, initial_value=False)
-	#	gpioStop = gpiozero.OutputDevice(self.pinArray["stop"], active_high=True, initial_value=False)
-
+		self.isStopped = False
 
 	def open(self):
+		self.releaseStop()
 		# open_gate_trigger.trigger()
 		# print("OPEN FUNCTION STARTING " + self.name)
 		# let HA know that the cover is opening
@@ -251,9 +221,9 @@ class gate:
 		gpioOpen.off()
 		# Let HA know that the cover was opened
 		catt_gate.open()
-		pass
 
 	def close(self):
+		self.releaseStop()
 		# print("CLOSE FUNCTION STARTING " + self.name)
 		# let HA know that the cover is closing
 		catt_gate.closing()
@@ -263,17 +233,16 @@ class gate:
 		gpioClose.off()
 		# Let HA know that the cover was closed
 		catt_gate.closed()
-		pass
 
 	def stop(self, stoptime=toggle_length):
 		# Let HA know that the cover was stopped
 		catt_gate.stopped()
 		# print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
-		gpioStop.on()
-		time.sleep(stoptime)
-		# print("Releasing " + self.name + " trigger")
-		gpioStop.off()
-		pass
+		
+		self.isStopped = True
+
+		thread = threading.Thread(target=self.runAsyncMonitorIsStopped)
+		thread.start()
 
 	def personOpen(self, openLength=4):
 		# print("PERSONOPEN FUNCTION STARTING " + self.name + " for: " + str(self.personTime) + "sec")
@@ -282,16 +251,32 @@ class gate:
 		self.stop(self.personTime)
 		# print("Closing " + self.name)
 		self.close()
-		pass
 
 	def party(self, openLength=4):
 		self.open()
 		time.sleep(openLength)
 		self.stop()
 
-def gpioCleanup():
-	print("Datetime", str(datetime.now().astimezone(tz)), " GPIO clean up not necessary with new library, EndOfFunction")
+	# `stop` helper functions
+	def runAsyncMonitorIsStopped(self):
+		asyncio.run(self.monitorIsStopped())
 
+	async def monitorIsStopped(self):
+		gpioStop.on()
+		try:
+			await asyncio.wait_for(self.waitIsStoppedFalse(), timeout=self.stop_hold_timeout)
+		except asyncio.TimeoutError:
+			self.releaseStop()
+		finally:
+			self.releaseStop()
+
+	async def waitIsStoppedFalse(self):
+		while self.isStopped:
+			await asyncio.sleep(0.5)
+	
+	def releaseStop(self):
+		self.isStopped = False
+		gpioStop.off()
 
 #######MQTT#######
 
@@ -385,9 +370,6 @@ mqtt_accesscode = BinarySensor(AccessCodeUsed_settings)
 # mqtt_accesscode.set_text(bootup)
 mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone(tz))})
 
-# open_gate_trigger_into = DeviceTriggerInfo(name="Open Gate", type="gate", subtype="open", unique_id="open_gate_trigger", device=device_info)
-# open_gate_trigger_settings = Settings(mqtt=mqtt_settings, entity=open_gate_trigger_into)
-# open_gate_trigger = DeviceTrigger(open_gate_trigger_settings)
 
 if __name__ == '__main__' :
 	'''
