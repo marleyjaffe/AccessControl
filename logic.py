@@ -17,6 +17,8 @@ import logging
 import random
 import time
 import gpiozero
+import asyncio
+import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -104,7 +106,7 @@ async def keypad(device, location):
 					gate.stop(2)
 					keypad_string = ''
 				elif keypressed == 'MAILBOX':
-					exPkgLck.open(10)
+					gate.releaseStop()
 					keypad_string = ''
 				elif keypressed == 'A':
 					keypad_string = ''
@@ -227,6 +229,7 @@ class lock:
 class gate:
 	personTime = 10
 	toggle_length = .3
+	stop_hold_timeout = 60 * 5
 #	gpioOpen = gpiozero.OutputDevice(6, active_high=True, initial_value=False)
 #	gpioClose = gpiozero.OutputDevice(13, active_high=True, initial_value=False)
 #	gpioStop = gpiozero.OutputDevice(19, active_high=True, initial_value=False)
@@ -235,12 +238,13 @@ class gate:
 	def __init__(self, name, pins):
 		self.name = name
 		self.pinArray = pins
+		self.holdOpen = False
 	#	gpioOpen = gpiozero.OutputDevice(self.pinArray["open"], active_high=True, initial_value=False)
 	#	gpioClose = gpiozero.OutputDevice(self.pinArray["close"], active_high=True, initial_value=False)
 	#	gpioStop = gpiozero.OutputDevice(self.pinArray["stop"], active_high=True, initial_value=False)
 
-
 	def open(self):
+		self.releaseStop()
 		# open_gate_trigger.trigger()
 		# print("OPEN FUNCTION STARTING " + self.name)
 		# let HA know that the cover is opening
@@ -251,9 +255,9 @@ class gate:
 		gpioOpen.off()
 		# Let HA know that the cover was opened
 		catt_gate.open()
-		pass
 
 	def close(self):
+		self.releaseStop()
 		# print("CLOSE FUNCTION STARTING " + self.name)
 		# let HA know that the cover is closing
 		catt_gate.closing()
@@ -263,17 +267,36 @@ class gate:
 		gpioClose.off()
 		# Let HA know that the cover was closed
 		catt_gate.closed()
-		pass
 
 	def stop(self, stoptime=toggle_length):
 		# Let HA know that the cover was stopped
 		catt_gate.stopped()
 		# print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
+		
+		self.holdOpen = True
+
+		thread = threading.Thread(target=self.run_async_monitor)
+		thread.start()
+	
+	def run_async_monitor(self):
+		asyncio.run(self.monitor_hold_open())
+
+	async def monitor_hold_open(self):
 		gpioStop.on()
-		time.sleep(stoptime)
-		# print("Releasing " + self.name + " trigger")
+		try:
+			await asyncio.wait_for(self.wait_until_hold_open_false(), timeout=self.stop_hold_timeout)
+		except asyncio.TimeoutError:
+			self.releaseStop()
+		finally:
+			self.releaseStop()
+
+	async def wait_until_hold_open_false(self):
+		while self.holdOpen:
+			await asyncio.sleep(0.5)
+	
+	def releaseStop(self):
+		self.holdOpen = False
 		gpioStop.off()
-		pass
 
 	def personOpen(self, openLength=4):
 		# print("PERSONOPEN FUNCTION STARTING " + self.name + " for: " + str(self.personTime) + "sec")
@@ -282,7 +305,6 @@ class gate:
 		self.stop(self.personTime)
 		# print("Closing " + self.name)
 		self.close()
-		pass
 
 	def party(self, openLength=4):
 		self.open()
