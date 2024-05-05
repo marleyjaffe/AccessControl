@@ -166,7 +166,6 @@ def logic(keypad_input):
 	elif accessLevel == "stop":
 		print("Datetime", str(datetime.now().astimezone(tz)), " STOP function triggered")
 		gate.stop(2)
-		# catt_gate.stopped()
 	elif accessLevel == "party":
 		print("Datetime", str(datetime.now().astimezone(tz)), " PARTY function triggered")
 		gate.party()
@@ -210,32 +209,21 @@ class gate:
 
 	def open(self):
 		self.releaseStop()
-		# open_gate_trigger.trigger()
 		# print("OPEN FUNCTION STARTING " + self.name)
-		# let HA know that the cover is opening
-		# catt_gate.opening()
 		gpioOpen.on()
 		time.sleep(self.toggle_length)
 		# print("Releasing " + self.name + " trigger")
 		gpioOpen.off()
-		# Let HA know that the cover was opened
-		# catt_gate.open()
 
 	def close(self):
 		self.releaseStop()
 		# print("CLOSE FUNCTION STARTING " + self.name)
-		# let HA know that the cover is closing
-		# catt_gate.closing()
 		gpioClose.on()
 		time.sleep(self.toggle_length)
 		# print("Releasing " + self.name + " trigger")
 		gpioClose.off()
-		# Let HA know that the cover was closed
-		# catt_gate.closed()
 
 	def stop(self, stoptime=toggle_length):
-		# Let HA know that the cover was stopped
-		# catt_gate.stopped()
 		# print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
 		
 		self.isStopped = True
