@@ -1,6 +1,11 @@
 # db_utils.py
 import os
 import sqlite3
+import logging
+
+logging.basicConfig(format='%(asctime)s - %(message)s',
+					datefmt='%Y-%m-%d %H:%M:%S')
+logging.getLogger().setLevel(logging.INFO)
 
 # create a default path to connect to and create (if necessary) a database
 # called 'database.sqlite3' in the same directory as this script
@@ -55,11 +60,11 @@ def search_code(con, passedcode):
 	'''
 
 	if passedcode == "":
-		print("empty code passed to function. exiting search function safely")
+		logging.debug(f"'passedcode' empty. Exiting function.")
 		return None
 	#Check if passedcode var is type string. If not, casts as a string
 	elif not isinstance(passedcode, str):
-		print("var not string. converting")
+		logging.debug(f"Converting 'passedcode' to string")
 		passedcode = str(passedcode)
 	sql = "SELECT code, name, accesslevel FROM codes WHERE code = " + passedcode
 	con.row_factory = sqlite3.Row
@@ -71,7 +76,7 @@ def search_code(con, passedcode):
 		#print("Code: ", returnedCode, " Name is: ", returnedName, " Level is: ", returnedAccessLevel)
 		return returnedAccessLevel, returnedName
 	else:
-		print("No results found in table. Exiting function")
+		logging.warning(f"'passedcode' returned no match in database table. Exiting function.")
 		return
 
 def update_code(con, passedCode, newCode):
@@ -239,7 +244,7 @@ def search_ring(con, passedcode):
 	cur.execute(sql)
 	result = cur.fetchone()
 	returnedCode, returnedName, returnedPhoneNumber, returnedCommunicationPreference = result['code'], result['name'], result['number'], result['option']
-	print("Code: ", returnedCode, " Name is: ", returnedName, " number is: ", returnedPhoneNumber)
+	logging.info(f"Code: {returnedCode} | Name: {returnedCode} | Number: {returnedPhoneNumber}")
 	return returnedPhoneNumber, returnedCommunicationPreference
 
 '''
@@ -261,7 +266,7 @@ Used for troubleshooting
 def all_tables(con):
 	cur = con.cursor()
 	cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-	print(cur.fetchall())
+	logging.debug(f"{cur.fetchall()}")
 
 '''
 Used for direct interaction into SQLite Database

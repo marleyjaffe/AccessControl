@@ -18,10 +18,9 @@ import time
 import gpiozero
 import asyncio
 import threading
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
-
 
 #MQTT Imports
 from ha_mqtt_discoverable import Settings, DeviceInfo
@@ -33,6 +32,10 @@ import asyncio, evdev
 from evdev import InputDevice, categorize, ecodes
 
 tz = ZoneInfo('America/Los_Angeles')
+
+logging.basicConfig(format='%(asctime)s - %(message)s',
+					datefmt='%Y-%m-%d %H:%M:%S')
+logging.getLogger().setLevel(logging.INFO)
 
 #set pin num variables
 O_PIN = 6
@@ -95,7 +98,7 @@ async def keypad(device, location):
 					elif location == 'outside':
 						keypressed = outside_scancodes.get(data.scancode)
 					else:
-						print(str(datetime.now().astimezone(tz))," ERROR: Keypad Location variable not found")
+						logging.error(f"Keypad Location variable not found")
 
 					if keypressed == 'ENTR':
 						logic(keypad_string)
@@ -140,37 +143,37 @@ async def keypad(device, location):
 							if isKeypadActive:
 								if isLengthOK:		
 									if isTimeoutOK:
+										logging.info(f"Key pressed: {keypressed} at location: {location }")
 										keypad_last_pressed_time = time.time()
-										print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
 										keypad_string += keypressed
 									else:
-										print(str(datetime.now().astimezone(tz))," INFO: 'keypad_string' will be reset from timeout")
+										logging.debug(f"`keypad_string` will be reset from timeout")
+										logging.info(f"Key pressed: {keypressed} at location: {location }")
 										keypad_last_pressed_time = time.time()
-										print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
 										keypad_string = keypressed
 								else:
-									print(str(datetime.now().astimezone(tz))," INFO: 'keypad_string' reset from length exceeded")
+									logging.debug(f"`keypad_string` reset from length exceeded")
+									logging.info(f"Key pressed: {keypressed} at location: {location }")
 									keypad_last_pressed_time = time.time()
-									print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)	
 									keypad_string = keypressed
 							else:
+								logging.debug(f"Keypad set to active.")
+								logging.info(f"Key pressed: {keypressed} at location: {location }")
 								isKeypadActive = True
 								keypad_last_pressed_time = time.time()
-								print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)	
 								keypad_string = keypressed
-						except TypeError as err:
-							# I believe these happen for every keypress
-							# print(f"{str(datetime.now().astimezone(tz))} Unexpected Type Error {err=}, {type(err)=}")
+						except TypeError as error:
+							logging.debug(f"TypeError: {error}")
 							continue
-						except Exception as err:
-							print(f"{str(datetime.now().astimezone(tz))} Unexpected {err=}, {type(err)=}")
+						except Exception as error:
+							logging.error(f"Unexpected error: {error}")
 	except OSError as error:
 		if error.errno == 19:
-			print(f"{str(datetime.now().astimezone(tz))} ERROR: No such device. Location: {location}. Is the keypad connected? ")
+			logging.critical(f"No such device. Location: {location}. Is the keypad connected?")
 		else:
-			print(f"{str(datetime.now().astimezone(tz))} ERROR: {error}")
+			logging.critical(f"OSError: {error}")
 	except Exception as error:
-		print(f"{str(datetime.now().astimezone(tz))} ERROR: {error}")
+		logging.critical(f"Exception: {error}")
 
 def logic(keypad_input):
 	try:
@@ -179,28 +182,29 @@ def logic(keypad_input):
 		accessLevel = "error"
 		codeName = "BadCode"
 	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
-	print(str(datetime.now().astimezone(tz)), " Name:", codeName, " AccessCode: ", keypad_input, " AccessLevel: ", accessLevel)
+
+	logging.info(f"Name: {codeName} | AccessCode: {keypad_input} | AccessLevel: {accessLevel} ")
 	if accessLevel == "gate":
-		print(str(datetime.now().astimezone(tz)), " OPEN function triggered")
+		logging.info(f"OPEN function triggered")
 		gate.open()
 	elif accessLevel == "delivery":
-		print(str(datetime.now().astimezone(tz)), " DELIVERY function triggered")
+		logging.info(f"DELIVERY function triggered")
 		gate.open(True)
 	elif accessLevel == "lock":
-		print(str(datetime.now().astimezone(tz)), " LOCK function triggered")
+		logging.info(f"LOCK function triggered")
 		exPkgLck.open(10)
 	elif accessLevel == "close":
-		print(str(datetime.now().astimezone(tz)), " CLOSE function triggered")
+		logging.info(f"CLOSE function triggered")
 		gate.close()
 	elif accessLevel == "stop":
-		print(str(datetime.now().astimezone(tz)), " STOP function triggered")
+		logging.info(f"STOP function triggered")
 		gate.stop(2)
 	elif accessLevel == "party":
-		print(str(datetime.now().astimezone(tz)), " PARTY function triggered")
+		logging.info(f"PARTY function triggered")
 		gate.party()
 	else:
 		#TODO: flash lights like an angry old man
-		print(str(datetime.now().astimezone(tz)), " ERROR: Access Level Missing not defined")
+		logging.critical(f"AccessLevel undefined!")
 		pass
 
 #TODO build ring function
@@ -208,7 +212,7 @@ def outside_ring(keypad_input):
 	ringer
 
 def gpioCleanup():
-	print(str(datetime.now().astimezone(tz)), " GPIO clean up not necessary with new library, EndOfFunction")
+	logging.debug(f"GPIO clean up not necessary with new library, EndOfFunction")
 
 class lock:
 	default_time = 15
@@ -219,10 +223,8 @@ class lock:
 		pass
 
 	def open(self, unlocktime=default_time):
-		# print("Opening " + self.name + " for: " + str(unlocktime) + "sec")
 		gpioLock.on()
 		time.sleep(unlocktime)
-		# print("Locking " + self.name + " trigger")
 		gpioLock.off()
 
 class gate:
@@ -240,32 +242,26 @@ class gate:
 	def open(self, isHardOpen=False):
 		self.releaseHardOpen()
 		if isHardOpen:
-			print(str(datetime.now().astimezone(tz)), " HOLD OPEN")
+			logging.info(f"HOLD OPEN")
 			self.isHardOpen = True
 			thread = threading.Thread(target=self.runAsyncMonitorIsHardOpen)
 			thread.start()
 		else:
-			print(str(datetime.now().astimezone(tz)), " SOFT OPEN")
+			logging.info(f"SOFT OPEN")
 			self.releaseStop()
-			# print("OPEN FUNCTION STARTING " + self.name)
 			gpioOpen.on()
 			time.sleep(self.toggle_length)
-			# print("Releasing " + self.name + " trigger")
 			gpioOpen.off()
 
 	def close(self):
 		self.releaseHardOpen()
 		self.releaseStop()
-		# print("CLOSE FUNCTION STARTING " + self.name)
 		gpioClose.on()
 		time.sleep(self.toggle_length)
-		# print("Releasing " + self.name + " trigger")
 		gpioClose.off()
 
 	def stop(self, stoptime=toggle_length):
 		self.releaseHardOpen()
-		# print("STOP FUNCTION STARTING " + self.name + " for: " + str(stoptime) + "sec")
-		
 		self.isStopped = True
 
 		thread = threading.Thread(target=self.runAsyncMonitorIsStopped)
@@ -274,11 +270,9 @@ class gate:
 	def personOpen(self, openLength=4):
 		self.releaseHardOpen()
 		self.releaseStop()
-		# print("PERSONOPEN FUNCTION STARTING " + self.name + " for: " + str(self.personTime) + "sec")
 		self.open()
 		time.sleep(openLength)
 		self.stop(self.personTime)
-		# print("Closing " + self.name)
 		self.close()
 
 	def party(self, openLength=4):
@@ -298,7 +292,7 @@ class gate:
 		try:
 			await asyncio.wait_for(self.waitIsHardOpenFalse(), timeout=self.hard_open_timeout)
 		except asyncio.TimeoutError:
-			print(str(datetime.now().astimezone(tz)), " HOLD OPEN timeout hit")
+			logging.info(f"HOLD OPEN timeout hit")
 			self.releaseHardOpen()
 			self.close()
 		finally:
@@ -321,7 +315,7 @@ class gate:
 		try:
 			await asyncio.wait_for(self.waitIsStoppedFalse(), timeout=self.stop_hold_timeout)
 		except asyncio.TimeoutError:
-			print(str(datetime.now().astimezone(tz)), " STOP HOLD timeout hit")
+			logging.info(f"STOP HOLD timeout hit")
 			self.releaseStop()
 			self.close()
 		finally:
@@ -372,7 +366,7 @@ user_data = "Some custom data"
 
 
 def gate_open_callback(client: Client, user_data, message: MQTTMessage):
-	print(str(datetime.now().astimezone(tz)), "OPEN triggered from HomeAssistant")
+	logging.info(f"OPEN triggered from HomeAssistant")
 	gate.open()
 
 gate_open_info = ButtonInfo(name="liq-gatepi-gate-open", unique_id="liq-gatepi-gate-open", device=device_info)
@@ -381,7 +375,7 @@ gate_open_button = Button(gate_open_settings, gate_open_callback, user_data)
 gate_open_button.write_config()
 
 def gate_hold_open_callback(client: Client, user_data, message: MQTTMessage):
-	print(str(datetime.now().astimezone(tz)), "HOLD OPEN triggered from HomeAssistant")
+	logging.info(f"HOLD OPEN triggered from HomeAssistant")
 	gate.open(True)
 
 gate_hold_open_info = ButtonInfo(name="liq-gatepi-gate-hold-open", unique_id="liq-gatepi-gate-hold-open", device=device_info)
@@ -390,7 +384,7 @@ gate_hold_open_button = Button(gate_hold_open_settings, gate_hold_open_callback,
 gate_hold_open_button.write_config()
 
 def gate_close_callback(client: Client, user_data, message: MQTTMessage):
-	print(str(datetime.now().astimezone(tz)), "CLOSE triggered from HomeAssistant")
+	logging.info(f"CLOSE triggered from HomeAssistant")
 	gate.close()
 
 gate_close_info = ButtonInfo(name="liq-gatepi-gate-close", unique_id="liq-gatepi-gate-close", device=device_info)
@@ -399,7 +393,7 @@ gate_close_button = Button(gate_close_settings, gate_close_callback, user_data)
 gate_close_button.write_config()
 
 def gate_stop_callback(client: Client, user_data, message: MQTTMessage):
-	print(str(datetime.now().astimezone(tz)), "STOP triggered from HomeAssistant")
+	logging.info(f"STOP triggered from HomeAssistant")
 	gate.stop()
 
 gate_stop_info = ButtonInfo(name="liq-gatepi-gate-stop", unique_id="liq-gatepi-gate-stop", device=device_info)
@@ -408,7 +402,7 @@ gate_stop_button = Button(gate_stop_settings, gate_stop_callback, user_data)
 gate_stop_button.write_config()
 
 def gate_release_stop_callback(client: Client, user_data, message: MQTTMessage):
-	print(str(datetime.now().astimezone(tz)), "RELEASE-STOP triggered from HomeAssistant")
+	logging.info(f"RELEASE-STOP triggered from HomeAssistant")
 	gate.releaseStop()
 
 gate_release_stop_info = ButtonInfo(name="liq-gatepi-gate-release_stop", unique_id="liq-gatepi-gate-release_stop", device=device_info)
@@ -512,8 +506,8 @@ if __name__ == '__main__' :
 		loop = asyncio.get_event_loop()
 		loop.run_forever()
 	except KeyboardInterrupt:
-		print(str(datetime.now().astimezone(tz)), " Keyboard interrupt detected. Exiting nicely")
+		logging.warning(f"Keyboard interrupt detected. Exiting nicely")
 	except Exception as error:
-		print(str(datetime.now().astimezone(tz)), " other exit: ", error)	
+		logging.critical(f"Exception: {error}")
 	finally:
 		gpioCleanup()
