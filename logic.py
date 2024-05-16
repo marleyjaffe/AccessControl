@@ -55,7 +55,7 @@ kbd_inside.grab()
 
 #set initial keypad string
 keypad_string = ''
-
+keypad_string_max_length = 9
 keypad_string_timeout = 10
 keypad_last_pressed_time = time.time()
 
@@ -63,7 +63,7 @@ keypad_last_pressed_time = time.time()
 inside_scancodes = {
 	# Scancode: ASCIICode
 	2: u'1', 3: u'2', 4: u'3', 5: u'4', 6: u'5', 7: u'6', 8: u'7', 9: u'8', 10: u'9', 11: u'0', 
-	28: u'ENTR', 14: u'*', 30: u'OPEN', 48: u'STOP', 46: u'CLOSE', 32: u'MAILBOX'
+	28: u'ENTR', 14: u'*', 30: u'OPEN', 48: u'STOP', 46: u'CLOSE', 32: u'RELEASE'
 }
 
 #ASCII Mapping for Outside Keypad
@@ -75,8 +75,13 @@ outside_scancodes = {
 
 async def keypad(device, location):
 	global keypad_string
+	global keypad_string_max_length
 	global keypad_string_timeout
 	global keypad_last_pressed_time
+	global isKeypadActive
+	global isLengthOK
+	global isTimeoutOK
+
 	
 	try:
 		async for event in device.async_read_loop():
@@ -87,62 +92,78 @@ async def keypad(device, location):
 				if data.keystate == 0: # up events only
 					if location == 'inside':
 						keypressed = inside_scancodes.get(data.scancode)
-						print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
 					elif location == 'outside':
 						keypressed = outside_scancodes.get(data.scancode)
-						print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
 					else:
-						print(str(datetime.now().astimezone(tz))," ERROR - Keypad Location variable not found")
+						print(str(datetime.now().astimezone(tz))," ERROR: Keypad Location variable not found")
 
 					if keypressed == 'ENTR':
 						logic(keypad_string)
 						keypad_string = ''
+						isKeypadActive = False
 					elif keypressed == 'OPEN':
 						gate.open()
 						keypad_string = ''
+						isKeypadActive = False
 					elif keypressed == 'CLOSE':
 						gate.close()
 						keypad_string = ''
+						isKeypadActive = False
 					elif keypressed == 'STOP':
 						gate.stop(2)
 						keypad_string = ''
-					elif keypressed == 'MAILBOX':
+						isKeypadActive = False
+					elif keypressed == 'RELEASE':
 						gate.releaseStop()
 						keypad_string = ''
+						isKeypadActive = False
 					elif keypressed == 'A':
 						keypad_string = ''
+						isKeypadActive = False
 					elif keypressed == 'B':
 						keypad_string = ''
+						isKeypadActive = False
 					elif keypressed == 'C':
 						keypad_string = ''
+						isKeypadActive = False
 					elif keypressed == 'D':
 						keypad_string = ''
+						isKeypadActive = False
+					# delete last character from string
 					elif keypressed == '*':
 						keypad_string = keypad_string[:-1]
 					else:
 						try:
-							# print('len:', len(keypad_string))
-							# print('time:', keypad_last_pressed_time)
-							if len(keypad_string) <= 9:
-								# print('timemath: ', time.time() - keypad_last_pressed_time)
-								if time.time() - keypad_last_pressed_time <= keypad_string_timeout:
-									keypad_last_pressed_time = time.time()
-									# print('in loop', keypad_last_pressed_time)
-									keypad_string += keypressed
+							isLengthOK = len(keypad_string) <= keypad_string_max_length
+							isTimeoutOK = time.time() - keypad_last_pressed_time <= keypad_string_timeout
+
+							if isKeypadActive:
+								if isLengthOK:		
+									if isTimeoutOK:
+										keypad_last_pressed_time = time.time()
+										print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
+										keypad_string += keypressed
+									else:
+										print(str(datetime.now().astimezone(tz))," INFO: 'keypad_string' will be reset from timeout")
+										keypad_last_pressed_time = time.time()
+										print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
+										keypad_string = keypressed
 								else:
-									print(str(datetime.now().astimezone(tz))," INFO - keypad timeout occured")
+									print(str(datetime.now().astimezone(tz))," INFO: 'keypad_string' reset from length exceeded")
 									keypad_last_pressed_time = time.time()
+									print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)	
 									keypad_string = keypressed
 							else:
-								print(str(datetime.now().astimezone(tz))," ERROR - keycode length exceeded")
+								isKeypadActive = True
 								keypad_last_pressed_time = time.time()
+								print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)	
 								keypad_string = keypressed
 						except TypeError as err:
 							# I believe these happen for every keypress
-							# print(f"Datetime {str(datetime.now().astimezone(tz))} Unexpected Type Error {err=}, {type(err)=}")
+							# print(f"{str(datetime.now().astimezone(tz))} Unexpected Type Error {err=}, {type(err)=}")
 							continue
 						except Exception as err:
-							print(f"Datetime {str(datetime.now().astimezone(tz))} Unexpected {err=}, {type(err)=}")
+							print(f"{str(datetime.now().astimezone(tz))} Unexpected {err=}, {type(err)=}")
 	except OSError as error:
 		if error.errno == 19:
 			print(f"{str(datetime.now().astimezone(tz))} ERROR: No such device. Location: {location}. Is the keypad connected? ")
@@ -179,7 +200,7 @@ def logic(keypad_input):
 		gate.party()
 	else:
 		#TODO: flash lights like an angry old man
-		print(str(datetime.now().astimezone(tz)), " ERROR - Access Level Missing not defined")
+		print(str(datetime.now().astimezone(tz)), " ERROR: Access Level Missing not defined")
 		pass
 
 #TODO build ring function
