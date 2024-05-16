@@ -77,71 +77,79 @@ async def keypad(device, location):
 	global keypad_string
 	global keypad_string_timeout
 	global keypad_last_pressed_time
-	async for event in device.async_read_loop():
+	
+	try:
+		async for event in device.async_read_loop():
 		
-		if event.type == evdev.ecodes.EV_KEY:
-			# if location	== 'inside':
-			data = evdev.categorize(event)
-			if data.keystate == 0: # up events only
-				if location == 'inside':
-					keypressed = inside_scancodes.get(data.scancode)
-					print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
-				elif location == 'outside':
-					keypressed = outside_scancodes.get(data.scancode)
-					print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
-				else:
-					print(str(datetime.now().astimezone(tz))," ERROR - Keypad Location variable not found")
+			if event.type == evdev.ecodes.EV_KEY:
+				# if location	== 'inside':
+				data = evdev.categorize(event)
+				if data.keystate == 0: # up events only
+					if location == 'inside':
+						keypressed = inside_scancodes.get(data.scancode)
+						print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
+					elif location == 'outside':
+						keypressed = outside_scancodes.get(data.scancode)
+						print(str(datetime.now().astimezone(tz)), " ", location, " keypad: ", keypressed)
+					else:
+						print(str(datetime.now().astimezone(tz))," ERROR - Keypad Location variable not found")
 
-				if keypressed == 'ENTR':
-					logic(keypad_string)
-					keypad_string = ''
-				elif keypressed == 'OPEN':
-					gate.open()
-					keypad_string = ''
-				elif keypressed == 'CLOSE':
-					gate.close()
-					keypad_string = ''
-				elif keypressed == 'STOP':
-					gate.stop(2)
-					keypad_string = ''
-				elif keypressed == 'MAILBOX':
-					gate.releaseStop()
-					keypad_string = ''
-				elif keypressed == 'A':
-					keypad_string = ''
-				elif keypressed == 'B':
-					keypad_string = ''
-				elif keypressed == 'C':
-					keypad_string = ''
-				elif keypressed == 'D':
-					keypad_string = ''
-				elif keypressed == '*':
-					keypad_string = keypad_string[:-1]
-				else:
-					try:
-						# print('len:', len(keypad_string))
-						# print('time:', keypad_last_pressed_time)
-						if len(keypad_string) <= 9:
-							# print('timemath: ', time.time() - keypad_last_pressed_time)
-							if time.time() - keypad_last_pressed_time <= keypad_string_timeout:
-								keypad_last_pressed_time = time.time()
-								# print('in loop', keypad_last_pressed_time)
-								keypad_string += keypressed
+					if keypressed == 'ENTR':
+						logic(keypad_string)
+						keypad_string = ''
+					elif keypressed == 'OPEN':
+						gate.open()
+						keypad_string = ''
+					elif keypressed == 'CLOSE':
+						gate.close()
+						keypad_string = ''
+					elif keypressed == 'STOP':
+						gate.stop(2)
+						keypad_string = ''
+					elif keypressed == 'MAILBOX':
+						gate.releaseStop()
+						keypad_string = ''
+					elif keypressed == 'A':
+						keypad_string = ''
+					elif keypressed == 'B':
+						keypad_string = ''
+					elif keypressed == 'C':
+						keypad_string = ''
+					elif keypressed == 'D':
+						keypad_string = ''
+					elif keypressed == '*':
+						keypad_string = keypad_string[:-1]
+					else:
+						try:
+							# print('len:', len(keypad_string))
+							# print('time:', keypad_last_pressed_time)
+							if len(keypad_string) <= 9:
+								# print('timemath: ', time.time() - keypad_last_pressed_time)
+								if time.time() - keypad_last_pressed_time <= keypad_string_timeout:
+									keypad_last_pressed_time = time.time()
+									# print('in loop', keypad_last_pressed_time)
+									keypad_string += keypressed
+								else:
+									print(str(datetime.now().astimezone(tz))," INFO - keypad timeout occured")
+									keypad_last_pressed_time = time.time()
+									keypad_string = keypressed
 							else:
-								print(str(datetime.now().astimezone(tz))," ERROR - keypad timeout occured")
+								print(str(datetime.now().astimezone(tz))," ERROR - keycode length exceeded")
 								keypad_last_pressed_time = time.time()
 								keypad_string = keypressed
-						else:
-							print(str(datetime.now().astimezone(tz))," ERROR - keycode length exceeded")
-							keypad_last_pressed_time = time.time()
-							keypad_string = keypressed
-					except TypeError as err:
-						# I believe these happen for every keypress
-						# print(f"Datetime {str(datetime.now().astimezone(tz))} Unexpected Type Error {err=}, {type(err)=}")
-						continue
-					except Exception as err:
-						print(f"Datetime {str(datetime.now().astimezone(tz))} Unexpected {err=}, {type(err)=}")
-
+						except TypeError as err:
+							# I believe these happen for every keypress
+							# print(f"Datetime {str(datetime.now().astimezone(tz))} Unexpected Type Error {err=}, {type(err)=}")
+							continue
+						except Exception as err:
+							print(f"Datetime {str(datetime.now().astimezone(tz))} Unexpected {err=}, {type(err)=}")
+	except OSError as error:
+		if error.errno == 19:
+			print(f"{str(datetime.now().astimezone(tz))} ERROR: No such device. Location: {location}. Is the keypad connected? ")
+		else:
+			print(f"{str(datetime.now().astimezone(tz))} ERROR: {error}")
+	except Exception as error:
+		print(f"{str(datetime.now().astimezone(tz))} ERROR: {error}")
 
 def logic(keypad_input):
 	try:
@@ -356,7 +364,7 @@ def gate_hold_open_callback(client: Client, user_data, message: MQTTMessage):
 	gate.open(True)
 
 gate_hold_open_info = ButtonInfo(name="liq-gatepi-gate-hold-open", unique_id="liq-gatepi-gate-hold-open", device=device_info)
-gate_hold_open_settings = Settings(mqtt=mqtt_settings, entity=gate_open_info)
+gate_hold_open_settings = Settings(mqtt=mqtt_settings, entity=gate_hold_open_info)
 gate_hold_open_button = Button(gate_hold_open_settings, gate_hold_open_callback, user_data)
 gate_hold_open_button.write_config()
 
