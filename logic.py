@@ -33,7 +33,7 @@ from evdev import InputDevice, categorize, ecodes
 
 tz = ZoneInfo('America/Los_Angeles')
 
-logging.basicConfig(format='%(asctime)s - %(message)s',
+logging.basicConfig(format='%(asctime)s %(levelname)s- %(message)s',
 					datefmt='%Y-%m-%d %H:%M:%S')
 logging.getLogger().setLevel(logging.INFO)
 
