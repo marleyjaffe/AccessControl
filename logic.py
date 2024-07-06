@@ -33,6 +33,7 @@ from evdev import InputDevice, categorize, ecodes
 
 tz = ZoneInfo('America/Los_Angeles')
 
+logging.Formatter.converter = time.localtime
 logging.basicConfig(format='%(asctime)s %(levelname)s- %(message)s',
 					datefmt='%Y-%m-%d %H:%M:%S')
 logging.getLogger().setLevel(logging.INFO)
@@ -57,6 +58,7 @@ kbd_outside.grab()
 kbd_inside.grab()
 
 #set initial keypad string
+isKeypadActive = False
 keypad_string = ''
 keypad_string_max_length = 9
 keypad_string_timeout = 10
@@ -85,51 +87,60 @@ async def keypad(device, location):
 	global isLengthOK
 	global isTimeoutOK
 
-	
 	try:
 		async for event in device.async_read_loop():
 		
 			if event.type == evdev.ecodes.EV_KEY:
-				# if location	== 'inside':
 				data = evdev.categorize(event)
-				if data.keystate == 0: # up events only
+
+				if data.keystate == 0 and data.scancode != 42: # up events only, ignoring duplicate keypress for right column keys
 					if location == 'inside':
 						keypressed = inside_scancodes.get(data.scancode)
 					elif location == 'outside':
 						keypressed = outside_scancodes.get(data.scancode)
 					else:
 						logging.error(f"Keypad Location variable not found")
+					
+					logging.info(f"Key pressed: {keypressed} at location: {location }")
 
 					if keypressed == 'ENTR':
-						logic(keypad_string)
+						logic(keypad_string, location)
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'OPEN':
+						master_code(keypressed, location)
 						gate.open()
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'CLOSE':
+						master_code(keypressed, location)
 						gate.close()
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'STOP':
+						master_code(keypressed, location)
 						gate.stop(2)
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'RELEASE':
+						master_code(keypressed, location)
 						gate.releaseStop()
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'A':
+						doorbell(keypressed, location)
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'B':
+						doorbell(keypressed, location)
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'C':
+						doorbell(keypressed, location)
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'D':
+						doorbell(keypressed, location)
 						keypad_string = ''
 						isKeypadActive = False
 					# delete last character from string
@@ -143,22 +154,18 @@ async def keypad(device, location):
 							if isKeypadActive:
 								if isLengthOK:		
 									if isTimeoutOK:
-										logging.info(f"Key pressed: {keypressed} at location: {location }")
 										keypad_last_pressed_time = time.time()
 										keypad_string += keypressed
 									else:
 										logging.debug(f"`keypad_string` will be reset from timeout")
-										logging.info(f"Key pressed: {keypressed} at location: {location }")
 										keypad_last_pressed_time = time.time()
 										keypad_string = keypressed
 								else:
 									logging.debug(f"`keypad_string` reset from length exceeded")
-									logging.info(f"Key pressed: {keypressed} at location: {location }")
 									keypad_last_pressed_time = time.time()
 									keypad_string = keypressed
 							else:
 								logging.debug(f"Keypad set to active.")
-								logging.info(f"Key pressed: {keypressed} at location: {location }")
 								isKeypadActive = True
 								keypad_last_pressed_time = time.time()
 								keypad_string = keypressed
@@ -169,18 +176,50 @@ async def keypad(device, location):
 							logging.error(f"Unexpected error: {error}")
 	except OSError as error:
 		if error.errno == 19:
+			dict = {
+			"Error": f"{location.capitalize()} Keypad Disconnected",
+			"Datetime": str(datetime.now().astimezone(tz))
+			}
+			mqtt_trigger.trigger(json.dumps(dict))
 			logging.critical(f"No such device. Location: {location}. Is the keypad connected?")
 		else:
 			logging.critical(f"OSError: {error}")
 	except Exception as error:
 		logging.critical(f"Exception: {error}")
 
-def logic(keypad_input):
+def master_code(keypad_input, location):
+	dict = {
+			"Command": f"{location.capitalize()} Override: {keypad_input}",
+			"Location": location,
+			"Datetime": str(datetime.now().astimezone(tz))
+		}
+	mqtt_trigger.trigger(json.dumps(dict))
+
+def doorbell(keypad_input, location):
+	dict = {
+			"Command": f"Doorbell: {keypad_input}",
+			"Location": location,
+			"Datetime": str(datetime.now().astimezone(tz))
+		}
+	mqtt_trigger.trigger(json.dumps(dict))
+
+def logic(keypad_input, location):
 	try:
 		accessLevel, codeName = search_code(con, keypad_input)
 	except:
 		accessLevel = "error"
 		codeName = "BadCode"
+		
+	dict = {
+			"AccessLevel": accessLevel,
+			"AccessCode": keypad_input,
+			"Command": f"{location.capitalize()} {codeName} ",
+			"Location": location,
+			"Datetime": str(datetime.now().astimezone(tz))
+		}
+	mqtt_trigger.trigger(json.dumps(dict))
+	
+	mqtt_accesscode.on()
 	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
 
 	logging.info(f"Name: {codeName} | AccessCode: {keypad_input} | AccessLevel: {accessLevel} ")
@@ -331,11 +370,17 @@ class gate:
 
 #######MQTT#######
 
+MQTT_HOST = "10.10.10.3"
+MQTT_BASE_NAME = "Catt"
+MQTT_DEVICE_NAME = f"{MQTT_BASE_NAME}-AccessControl"
+MQTT_BASE_IDENTIFIER = "catt"
+MQTT_DEVICE_IDENTIFIER = f"{MQTT_BASE_IDENTIFIER}-gatepi"
+
 # # Configure the required parameters for the MQTT broker
-mqtt_settings = Settings.MQTT(host="192.168.1.7")
+mqtt_settings = Settings.MQTT(host=MQTT_HOST)
 
 # # Define the device. At least one of `identifiers` or `connections` must be supplied
-device_info = DeviceInfo(name="Liq-AccessControl", identifiers="liq-gatepi")
+device_info = DeviceInfo(name=MQTT_DEVICE_NAME, identifiers=MQTT_DEVICE_IDENTIFIER)
 
 # # Define an optional object to be passed back to the callback
 user_data = "Some custom data"
@@ -366,53 +411,73 @@ user_data = "Some custom data"
 
 
 def gate_open_callback(client: Client, user_data, message: MQTTMessage):
+	dict = {
+			"Command": f"HA Override OPEN",
+		}
+	mqtt_trigger.trigger(json.dumps(dict))
 	logging.info(f"OPEN triggered from HomeAssistant")
 	gate.open()
 
-gate_open_info = ButtonInfo(name="liq-gatepi-gate-open", unique_id="liq-gatepi-gate-open", device=device_info)
+gate_open_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-open", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-open", device=device_info)
 gate_open_settings = Settings(mqtt=mqtt_settings, entity=gate_open_info)
 gate_open_button = Button(gate_open_settings, gate_open_callback, user_data)
 gate_open_button.write_config()
 
 def gate_hold_open_callback(client: Client, user_data, message: MQTTMessage):
+	dict = {
+			"Command": f"HA Override HOLD OPEN",
+		}
+	mqtt_trigger.trigger(json.dumps(dict))
 	logging.info(f"HOLD OPEN triggered from HomeAssistant")
 	gate.open(True)
 
-gate_hold_open_info = ButtonInfo(name="liq-gatepi-gate-hold-open", unique_id="liq-gatepi-gate-hold-open", device=device_info)
+gate_hold_open_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-hold-open", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-hold-open", device=device_info)
 gate_hold_open_settings = Settings(mqtt=mqtt_settings, entity=gate_hold_open_info)
 gate_hold_open_button = Button(gate_hold_open_settings, gate_hold_open_callback, user_data)
 gate_hold_open_button.write_config()
 
 def gate_close_callback(client: Client, user_data, message: MQTTMessage):
+	dict = {
+			"Command": f"HA Override CLOSE",
+		}
+	mqtt_trigger.trigger(json.dumps(dict))
 	logging.info(f"CLOSE triggered from HomeAssistant")
 	gate.close()
 
-gate_close_info = ButtonInfo(name="liq-gatepi-gate-close", unique_id="liq-gatepi-gate-close", device=device_info)
+gate_close_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-close", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-close", device=device_info)
 gate_close_settings = Settings(mqtt=mqtt_settings, entity=gate_close_info)
 gate_close_button = Button(gate_close_settings, gate_close_callback, user_data)
 gate_close_button.write_config()
 
 def gate_stop_callback(client: Client, user_data, message: MQTTMessage):
+	dict = {
+			"Command": f"HA Override STOP",
+		}
+	mqtt_trigger.trigger(json.dumps(dict))
 	logging.info(f"STOP triggered from HomeAssistant")
 	gate.stop()
 
-gate_stop_info = ButtonInfo(name="liq-gatepi-gate-stop", unique_id="liq-gatepi-gate-stop", device=device_info)
+gate_stop_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-stop", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-stop", device=device_info)
 gate_stop_settings = Settings(mqtt=mqtt_settings, entity=gate_stop_info)
 gate_stop_button = Button(gate_stop_settings, gate_stop_callback, user_data)
 gate_stop_button.write_config()
 
 def gate_release_stop_callback(client: Client, user_data, message: MQTTMessage):
+	dict = {
+			"Command": f"HA Override RELEASE STOP",
+		}
+	mqtt_trigger.trigger(json.dumps(dict))
 	logging.info(f"RELEASE-STOP triggered from HomeAssistant")
 	gate.releaseStop()
 
-gate_release_stop_info = ButtonInfo(name="liq-gatepi-gate-release_stop", unique_id="liq-gatepi-gate-release_stop", device=device_info)
+gate_release_stop_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-release_stop", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-release_stop", device=device_info)
 gate_release_stop_settings = Settings(mqtt=mqtt_settings, entity=gate_release_stop_info)
 gate_release_stop_button = Button(gate_release_stop_settings, gate_release_stop_callback, user_data)
 gate_release_stop_button.write_config()
 
 ## Package Drop Door
 # Information about the button
-package_info = ButtonInfo(name="liq-gatepi-package", unique_id="liq-gatepi-packageLock", device=device_info)
+package_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-package", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-packageLock", device=device_info)
 package_settings = Settings(mqtt=mqtt_settings, entity=package_info)
 
 # To receive button commands from HA, define a callback function:
@@ -428,7 +493,7 @@ catt_package.write_config()
 
 ## Person Gate
 # Information about the button
-gate_person_info = ButtonInfo(name="liq-gatepi-person", unique_id="liq-gatepi-person", device=device_info)
+gate_person_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-person", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-person", device=device_info)
 gate_person_settings = Settings(mqtt=mqtt_settings, entity=gate_person_info)
 
 # To receive button commands from HA, define a callback function:
@@ -444,7 +509,7 @@ catt_person.write_config()
 
 ## AccessCode Used
 # Information about the access code text
-AccessCodeUsed = BinarySensorInfo(name="access-code-entered", unique_id="liq-gatepi-accesscode-sensor", device=device_info)
+AccessCodeUsed = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-access-code-entered", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-accesscode-sensor", device=device_info)
 AccessCodeUsed_settings = Settings(mqtt=mqtt_settings, entity=AccessCodeUsed)
 
 # # To receive button commands from HA, define a callback function:
@@ -463,6 +528,12 @@ mqtt_accesscode = BinarySensor(AccessCodeUsed_settings)
 # mqtt_accesscode.set_text(bootup)
 mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone(tz))})
 
+
+
+mqtt_trigger_info = DeviceTriggerInfo(name="MyTrigger", type="button_press", subtype="button_1", unique_id="unique id", device=device_info)
+mqtt_trigger_settings = Settings(mqtt=mqtt_settings, entity=mqtt_trigger_info)
+mqtt_trigger = DeviceTrigger(mqtt_trigger_settings)
+mqtt_trigger.trigger("bootup")
 
 if __name__ == '__main__' :
 	'''
