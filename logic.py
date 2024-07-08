@@ -21,6 +21,7 @@ import threading
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from typing import Callable
 
 #MQTT Imports
 from ha_mqtt_discoverable import Settings, DeviceInfo
@@ -176,11 +177,12 @@ async def keypad(device, location):
 							logging.error(f"Unexpected error: {error}")
 	except OSError as error:
 		if error.errno == 19:
-			dict = {
-			"Error": f"{location.capitalize()} Keypad Disconnected",
-			"Datetime": str(datetime.now().astimezone(tz))
-			}
-			mqtt_trigger.trigger(json.dumps(dict))
+			if mqtt_trigger is not None:
+				dict = {
+				"Error": f"{location.capitalize()} Keypad Disconnected",
+				"Datetime": str(datetime.now().astimezone(tz))
+				}
+				mqtt_trigger.trigger(json.dumps(dict))
 			logging.critical(f"No such device. Location: {location}. Is the keypad connected?")
 		else:
 			logging.critical(f"OSError: {error}")
@@ -188,20 +190,22 @@ async def keypad(device, location):
 		logging.critical(f"Exception: {error}")
 
 def master_code(keypad_input, location):
-	dict = {
-			"Command": f"{location.capitalize()} Override: {keypad_input}",
-			"Location": location,
-			"Datetime": str(datetime.now().astimezone(tz))
-		}
-	mqtt_trigger.trigger(json.dumps(dict))
+	if mqtt_trigger is not None:
+		dict = {
+				"Command": f"{location.capitalize()} Override: {keypad_input}",
+				"Location": location,
+				"Datetime": str(datetime.now().astimezone(tz))
+			}
+		mqtt_trigger.trigger(json.dumps(dict))
 
 def doorbell(keypad_input, location):
-	dict = {
-			"Command": f"Doorbell: {keypad_input}",
-			"Location": location,
-			"Datetime": str(datetime.now().astimezone(tz))
-		}
-	mqtt_trigger.trigger(json.dumps(dict))
+	if mqtt_trigger is not None:
+		dict = {
+				"Command": f"Doorbell: {keypad_input}",
+				"Location": location,
+				"Datetime": str(datetime.now().astimezone(tz))
+			}
+		mqtt_trigger.trigger(json.dumps(dict))
 
 def logic(keypad_input, location):
 	try:
@@ -209,18 +213,18 @@ def logic(keypad_input, location):
 	except:
 		accessLevel = "error"
 		codeName = "BadCode"
-		
-	dict = {
-			"AccessLevel": accessLevel,
-			"AccessCode": keypad_input,
-			"Command": f"{location.capitalize()} {codeName} ",
-			"Location": location,
-			"Datetime": str(datetime.now().astimezone(tz))
-		}
-	mqtt_trigger.trigger(json.dumps(dict))
 	
-	mqtt_accesscode.on()
-	mqtt_accesscode.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
+	if mqtt_trigger is not None:
+		dict = {
+				"AccessLevel": accessLevel,
+				"AccessCode": keypad_input,
+				"Command": f"{location.capitalize()} {codeName} ",
+				"Location": location,
+				"Datetime": str(datetime.now().astimezone(tz))
+			}
+		mqtt_trigger.trigger(json.dumps(dict))
+	if mqtt_binary_sensor is not None:
+		mqtt_binary_sensor.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
 
 	logging.info(f"Name: {codeName} | AccessCode: {keypad_input} | AccessLevel: {accessLevel} ")
 	if accessLevel == "gate":
@@ -385,155 +389,98 @@ device_info = DeviceInfo(name=MQTT_DEVICE_NAME, identifiers=MQTT_DEVICE_IDENTIFI
 # # Define an optional object to be passed back to the callback
 user_data = "Some custom data"
 
+def create_button_function(name_suffix, callback):
+	def button_function():
+		info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-{name_suffix}", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-{name_suffix}", device=device_info)
+		settings = Settings(mqtt=mqtt_settings, entity=info)
+		button = Button(settings, callback, user_data)
+		button.write_config()
+	return button_function
 
+mqtt_trigger = None
+def create_trigger_function():
+	def trigger_function():
+		mqtt_trigger_info = DeviceTriggerInfo(name="MyTrigger", type="button_press", subtype="button_1", unique_id="unique id", device=device_info)
+		mqtt_trigger_settings = Settings(mqtt=mqtt_settings, entity=mqtt_trigger_info)
+		mqtt_trigger = DeviceTrigger(mqtt_trigger_settings)
+	return trigger_function
 
-#### UNCOMMENT IF WE EVER SWITCH BACK TO USING THE HA "COVER" OBJECT ####
+mqtt_binary_sensor = None
+def create_binary_sensor_function(name_suffix, callback):
+	def binary_sensor_function():
+		info = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-{name_suffix}", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-{name_suffix}", device=device_info)
+		settings = Settings(mqtt=mqtt_settings, entity=info)
+		mqtt_binary_sensor = BinarySensor(settings, callback, user_data)
+		mqtt_binary_sensor.write_config()
+	return binary_sensor_function
 
-# # Information about the cover
-# gate_info = CoverInfo(name="liq-gatepi-gate", unique_id="liq-gatepi-gate", device=device_info)
-# gate_settings = Settings(mqtt=mqtt_settings, entity=gate_info)
+def create_callback_function(command, action):
+	def callback(client: Client, user_data, message: MQTTMessage):
+		if mqtt_trigger is not None:
+			dict = {"Command": f"HA Override {command}"}
+			mqtt_trigger.trigger(json.dumps(dict))
+		logging.info(f"{command} triggered from HomeAssistant")
+		logging.info(f"{client} {message}")
+		action()
+	return callback
 
-# # To receive state commands from HA, define a callback function:
-# def gate_callback(client: Client, user_data, message: MQTTMessage):
-# 	payload = message.payload.decode()
-# 	if payload == "OPEN":
-# 		# call function to open cover
-# 		gate.open()
-# 	if payload == "CLOSE":
-# 		# call function to close the cover
-# 		gate.close()
-# 	if payload == "STOP":
-# 		# call function to stop the cover
-# 		gate.stop()
+def create_binary_sensor_function():
+	def binary_sensor_function():
+		AccessCodeUsed = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-access-code-entered", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-accesscode-sensor", device=device_info)
+		AccessCodeUsed_settings = Settings(mqtt=mqtt_settings, entity=AccessCodeUsed)
+		mqtt_accesscode = BinarySensor(AccessCodeUsed_settings)
+		mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone(tz))})
+	return binary_sensor_function
 
-#### UNCOMMENT IF WE EVER SWITCH BACK TO USING THE HA "COVER" OBJECT ####
+# Define the button functions
+create_mqtt_gate_open_button = create_button_function("gate-open", create_callback_function("OPEN", gate.open))
+create_mqtt_gate_hold_open_button = create_button_function("gate-hold-open", create_callback_function("HOLD OPEN", lambda: gate.open(True)))
+create_mqtt_gate_close_button = create_button_function("gate-close", create_callback_function("CLOSE", gate.close))
+create_mqtt_gate_stop_button = create_button_function("gate-stop", create_callback_function("STOP", gate.stop))
+create_mqtt_gate_release_stop_button = create_button_function("gate-release_stop", create_callback_function("RELEASE STOP", gate.releaseStop))
 
+# List of functions to be called
+functions_to_call = [
+	create_mqtt_gate_open_button, 
+	create_mqtt_gate_hold_open_button, 
+	create_mqtt_gate_close_button, 
+	create_mqtt_gate_stop_button, 
+	create_mqtt_gate_release_stop_button,
+	create_trigger_function,
+	create_binary_sensor_function
+]
 
+# Retry logic
+def retry_on_network_error(func, delay=10):
+	attempt = 0
+	while True:
+		logging.debug(f"Retry {attempt} in {delay} seconds...")
+		try:
+			func()
+			break
+		except OSError as error:
+			if error.errno == 101:
+				attempt += 1
+				logging.debug(f"Network unreachable.")
+				logging.debug(f"Retry {attempt} in {delay} seconds...")
+				time.sleep(delay)
+			else:
+				logging.debug(f"Unhandled OSError in {func.__name__}: {error.errno}")
+				logging.debug(f"Retry {attempt} in {delay} seconds...")
+				break
+		except Exception as error:
+			logging.debug(f"Unhandled Exception in {func.__name__}: {error}: {error.errno}")
+			logging.debug(f"Retry {attempt} in {delay} seconds...")
+			break
 
-def gate_open_callback(client: Client, user_data, message: MQTTMessage):
-	dict = {
-			"Command": f"HA Override OPEN",
-		}
-	mqtt_trigger.trigger(json.dumps(dict))
-	logging.info(f"OPEN triggered from HomeAssistant")
-	gate.open()
+def start_retry_in_thread(func: Callable, delay=10):
+	thread = threading.Thread(target=retry_on_network_error, args=(func, delay))
+	thread.daemon = True  # Ensure the thread exits when the main program does
+	thread.start()
 
-gate_open_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-open", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-open", device=device_info)
-gate_open_settings = Settings(mqtt=mqtt_settings, entity=gate_open_info)
-gate_open_button = Button(gate_open_settings, gate_open_callback, user_data)
-gate_open_button.write_config()
-
-def gate_hold_open_callback(client: Client, user_data, message: MQTTMessage):
-	dict = {
-			"Command": f"HA Override HOLD OPEN",
-		}
-	mqtt_trigger.trigger(json.dumps(dict))
-	logging.info(f"HOLD OPEN triggered from HomeAssistant")
-	gate.open(True)
-
-gate_hold_open_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-hold-open", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-hold-open", device=device_info)
-gate_hold_open_settings = Settings(mqtt=mqtt_settings, entity=gate_hold_open_info)
-gate_hold_open_button = Button(gate_hold_open_settings, gate_hold_open_callback, user_data)
-gate_hold_open_button.write_config()
-
-def gate_close_callback(client: Client, user_data, message: MQTTMessage):
-	dict = {
-			"Command": f"HA Override CLOSE",
-		}
-	mqtt_trigger.trigger(json.dumps(dict))
-	logging.info(f"CLOSE triggered from HomeAssistant")
-	gate.close()
-
-gate_close_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-close", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-close", device=device_info)
-gate_close_settings = Settings(mqtt=mqtt_settings, entity=gate_close_info)
-gate_close_button = Button(gate_close_settings, gate_close_callback, user_data)
-gate_close_button.write_config()
-
-def gate_stop_callback(client: Client, user_data, message: MQTTMessage):
-	dict = {
-			"Command": f"HA Override STOP",
-		}
-	mqtt_trigger.trigger(json.dumps(dict))
-	logging.info(f"STOP triggered from HomeAssistant")
-	gate.stop()
-
-gate_stop_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-stop", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-stop", device=device_info)
-gate_stop_settings = Settings(mqtt=mqtt_settings, entity=gate_stop_info)
-gate_stop_button = Button(gate_stop_settings, gate_stop_callback, user_data)
-gate_stop_button.write_config()
-
-def gate_release_stop_callback(client: Client, user_data, message: MQTTMessage):
-	dict = {
-			"Command": f"HA Override RELEASE STOP",
-		}
-	mqtt_trigger.trigger(json.dumps(dict))
-	logging.info(f"RELEASE-STOP triggered from HomeAssistant")
-	gate.releaseStop()
-
-gate_release_stop_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-release_stop", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-gate-release_stop", device=device_info)
-gate_release_stop_settings = Settings(mqtt=mqtt_settings, entity=gate_release_stop_info)
-gate_release_stop_button = Button(gate_release_stop_settings, gate_release_stop_callback, user_data)
-gate_release_stop_button.write_config()
-
-## Package Drop Door
-# Information about the button
-package_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-package", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-packageLock", device=device_info)
-package_settings = Settings(mqtt=mqtt_settings, entity=package_info)
-
-# To receive button commands from HA, define a callback function:
-def package_callback(client: Client, user_data, message: MQTTMessage):
-	exPkgLck.open(10)
-
-# Instantiate the button
-catt_package = Button(package_settings, package_callback, user_data)
-
-# Publish the button's discoverability message to let HA automatically notice it
-catt_package.write_config()
-
-
-## Person Gate
-# Information about the button
-gate_person_info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-person", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-person", device=device_info)
-gate_person_settings = Settings(mqtt=mqtt_settings, entity=gate_person_info)
-
-# To receive button commands from HA, define a callback function:
-def person_callback(client: Client, user_data, message: MQTTMessage):
-	# Call gate person open function
-	gate.personOpen()
-
-# Instantiate the button
-catt_person = Button(gate_person_settings, person_callback, user_data)
-
-# Publish the button's discoverability message to let HA automatically notice it
-catt_person.write_config()
-
-## AccessCode Used
-# Information about the access code text
-AccessCodeUsed = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-access-code-entered", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-accesscode-sensor", device=device_info)
-AccessCodeUsed_settings = Settings(mqtt=mqtt_settings, entity=AccessCodeUsed)
-
-# # To receive button commands from HA, define a callback function:
-# def accesscode_callback(client: Client, user_data, message: MQTTMessage):
-# 	text = message.payload.decode()
-# 	logging.info(f"Received {text} from HA")
-# 	# do_some_custom_thing(text)
-# 	# Send an MQTT message to confirm to HA that the text was changed
-# 	mqtt_accesscode.set_text(text)
-	
-
-# Instantiate the text
-mqtt_accesscode = BinarySensor(AccessCodeUsed_settings)
-
-# Publish the button's discoverability message to let HA automatically notice it
-# mqtt_accesscode.set_text(bootup)
-mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone(tz))})
-
-
-
-mqtt_trigger_info = DeviceTriggerInfo(name="MyTrigger", type="button_press", subtype="button_1", unique_id="unique id", device=device_info)
-mqtt_trigger_settings = Settings(mqtt=mqtt_settings, entity=mqtt_trigger_info)
-mqtt_trigger = DeviceTrigger(mqtt_trigger_settings)
-mqtt_trigger.trigger("bootup")
+# Start all functions with retry logic in separate threads
+for func in functions_to_call:
+	start_retry_in_thread(func)
 
 if __name__ == '__main__' :
 	'''
