@@ -37,7 +37,7 @@ tz = ZoneInfo('America/Los_Angeles')
 logging.Formatter.converter = time.localtime
 logging.basicConfig(format='%(asctime)s %(levelname)s- %(message)s',
 					datefmt='%Y-%m-%d %H:%M:%S')
-logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().setLevel(logging.DEBUG)
 
 #set pin num variables
 O_PIN = 6
@@ -208,6 +208,7 @@ def doorbell(keypad_input, location):
 
 def logic(keypad_input, location):
 	try:
+		logging.debug({"con": con, "keypad_input": keypad_input, "location": location})
 		accessLevel, codeName = search_code(con, keypad_input)
 	except:
 		accessLevel = "error"
@@ -373,10 +374,10 @@ class gate:
 
 #######MQTT#######
 
-MQTT_HOST = "10.10.10.3"
-MQTT_BASE_NAME = "Catt"
+MQTT_HOST = "192.168.1.7"
+MQTT_BASE_NAME = "Liq"
 MQTT_DEVICE_NAME = f"{MQTT_BASE_NAME}-AccessControl"
-MQTT_BASE_IDENTIFIER = "catt"
+MQTT_BASE_IDENTIFIER = "liq"
 MQTT_DEVICE_IDENTIFIER = f"{MQTT_BASE_IDENTIFIER}-gatepi"
 
 # # Configure the required parameters for the MQTT broker
@@ -432,11 +433,11 @@ def create_binary_sensor_function():
 	return binary_sensor_function
 
 # Define the button functions
-create_mqtt_gate_open_button = create_button_function("gate-open", create_callback_function("OPEN", gate.open))
+create_mqtt_gate_open_button = create_button_function("gate-open", create_callback_function("OPEN", lambda: gate.open()))
 create_mqtt_gate_hold_open_button = create_button_function("gate-hold-open", create_callback_function("HOLD OPEN", lambda: gate.open(True)))
-create_mqtt_gate_close_button = create_button_function("gate-close", create_callback_function("CLOSE", gate.close))
-create_mqtt_gate_stop_button = create_button_function("gate-stop", create_callback_function("STOP", gate.stop))
-create_mqtt_gate_release_stop_button = create_button_function("gate-release_stop", create_callback_function("RELEASE STOP", gate.releaseStop))
+create_mqtt_gate_close_button = create_button_function("gate-close", create_callback_function("CLOSE", lambda: gate.close()))
+create_mqtt_gate_stop_button = create_button_function("gate-stop", create_callback_function("STOP", lambda: gate.stop()))
+create_mqtt_gate_release_stop_button = create_button_function("gate-release_stop", create_callback_function("RELEASE STOP", lambda: gate.releaseStop()))
 
 # List of functions to be called
 functions_to_call = [
