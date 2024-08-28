@@ -3,17 +3,24 @@ import os
 import sqlite3
 import logging
 
-logging.basicConfig(format='%(asctime)s - %(message)s',
-					datefmt='%Y-%m-%d %H:%M:%S')
-logging.getLogger().setLevel(logging.INFO)
+# logging.basicConfig(format='%(asctime)s - %(message)s',
+# 					datefmt='%Y-%m-%d %H:%M:%S')
+# logging.getLogger().setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
 
 # create a default path to connect to and create (if necessary) a database
 # called 'database.sqlite3' in the same directory as this script
 DEFAULT_PATH = os.path.join(os.path.dirname(__file__), 'database.sqlite3')
 
 def db_connect(db_path=DEFAULT_PATH):
-	con = sqlite3.connect(db_path)
-	return con
+    try:
+        logging.debug(f"Attempting to connect to the database at: {db_path}")
+        con = sqlite3.connect(db_path)
+        logging.debug(f"Successfully connected to the database at: {db_path}")
+        return con
+    except sqlite3.Error as e:
+        logging.critical(f"Failed to connect to the database at {db_path}. SQLite error: {e}")
+        return None
 
 
 def create_code(con, passedcode, passedname, passedaccesslevel):
@@ -44,40 +51,53 @@ def create_code(con, passedcode, passedname, passedaccesslevel):
 
 
 def search_code(con, passedcode):
-	'''
-	Name:			search_code
+    '''
+    Name:            search_code
 
-	Description:	returns access level for passed code
+    Description:    returns access level for passed code
 
-	Input:			con: 				SQLite Connection
-					passedcode:			pincode to search for
+    Input:            con:                SQLite Connection
+                    passedcode:            pincode to search for
 
-	Actions:		Checks if passedcode is a valid search value.
-					Searches for passedcode in DB.
-					Returns AccessLevel
+    Actions:        Checks if passedcode is a valid search value.
+                    Searches for passedcode in DB.
+                    Returns AccessLevel
 
-	TODO: 			Decide if checks and returns should be independent functions
-	'''
+    TODO:            Decide if checks and returns should be independent functions
+    '''
 
-	if passedcode == "":
-		logging.debug(f"'passedcode' empty. Exiting function.")
-		return None
-	#Check if passedcode var is type string. If not, casts as a string
-	elif not isinstance(passedcode, str):
-		logging.debug(f"Converting 'passedcode' to string")
-		passedcode = str(passedcode)
-	sql = "SELECT code, name, accesslevel FROM codes WHERE code = " + passedcode
-	con.row_factory = sqlite3.Row
-	cur = con.cursor()
-	cur.execute(sql)
-	result = cur.fetchone()
-	if result is not None:
-		returnedCode, returnedName, returnedAccessLevel = result['code'], result['name'], result['accesslevel']
-		#print("Code: ", returnedCode, " Name is: ", returnedName, " Level is: ", returnedAccessLevel)
-		return returnedAccessLevel, returnedName
-	else:
-		logging.warning(f"'passedcode' returned no match in database table. Exiting function.")
-		return
+    logging.debug(f"Checking passedcode: {passedcode}")
+    
+    if passedcode == "":
+        logging.debug(f"'passedcode' empty. Exiting function.")
+        return None
+    # Ensure passedcode is an integer
+    elif not isinstance(passedcode, int):
+        logging.debug(f"Converting 'passedcode' to int")
+        passedcode = int(passedcode)
+    
+    sql = "SELECT code, name, accesslevel FROM codes WHERE code = ?"
+    logging.debug(f"running sql: {sql} with passedcode: {passedcode}")
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+
+    try:
+        cur.execute(sql, (passedcode,))
+        logging.debug(f"called execute")
+    except sqlite3.Error as e:
+        logging.error(f"SQLite error: {e}")
+        return
+
+    result = cur.fetchone()
+    logging.debug(f"result: {result}")
+    
+    if result is not None:
+        returnedCode, returnedName, returnedAccessLevel = result['code'], result['name'], result['accesslevel']
+        logging.debug(f"returnedName: {returnedName}, returnedAccessLevel: {returnedAccessLevel}")
+        return returnedAccessLevel, returnedName
+    else:
+        logging.warning(f"'passedcode' returned no match in database table. Exiting function.")
+        return
 
 def update_code(con, passedCode, newCode):
 	'''
