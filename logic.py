@@ -110,7 +110,6 @@ async def keypad(device, location):
 						isKeypadActive = False
 					elif keypressed == 'OPEN':
 						master_code(keypressed, location)
-						gate.open()
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'CLOSE':
