@@ -241,6 +241,8 @@ def logic(keypad_input, location):
 	elif accessLevel == "party":
 		logging.info(f"PARTY function triggered")
 		gate.party()
+	elif accessLevel == "disabled":
+		logging.critical(f"disabled gatecode attempted")
 	else:
 		#TODO: flash lights like an angry old man
 		logging.critical(f"AccessLevel undefined!")
