@@ -37,7 +37,7 @@ tz = ZoneInfo('America/Los_Angeles')
 logging.Formatter.converter = time.localtime
 logging.basicConfig(format='%(asctime)s %(levelname)s- %(message)s',
 					datefmt='%Y-%m-%d %H:%M:%S')
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.INFO)
 
 #set pin num variables
 O_PIN = 6
@@ -176,12 +176,11 @@ async def keypad(device, location):
 							logging.error(f"Unexpected error: {error}")
 	except OSError as error:
 		if error.errno == 19:
-			if mqtt_trigger is not None:
-				dict = {
-				"Error": f"{location.capitalize()} Keypad Disconnected",
-				"Datetime": str(datetime.now().astimezone(tz))
-				}
-				mqtt_trigger.trigger(json.dumps(dict))
+			dict = {
+			"Error": f"{location.capitalize()} Keypad Disconnected",
+			"Datetime": str(datetime.now().astimezone(tz))
+			}
+			mqtt_trigger_log(dict)
 			logging.critical(f"No such device. Location: {location}. Is the keypad connected?")
 		else:
 			logging.critical(f"OSError: {error}")
@@ -189,22 +188,20 @@ async def keypad(device, location):
 		logging.critical(f"Exception: {error}")
 
 def master_code(keypad_input, location):
-	if mqtt_trigger is not None:
-		dict = {
-				"Command": f"{location.capitalize()} Override: {keypad_input}",
-				"Location": location,
-				"Datetime": str(datetime.now().astimezone(tz))
-			}
-		mqtt_trigger.trigger(json.dumps(dict))
+	dict = {
+			"Command": f"{location.capitalize()} Override: {keypad_input}",
+			"Location": location,
+			"Datetime": str(datetime.now().astimezone(tz))
+		}
+	mqtt_trigger_log(dict)
 
 def doorbell(keypad_input, location):
-	if mqtt_trigger is not None:
-		dict = {
-				"Command": f"Doorbell: {keypad_input}",
-				"Location": location,
-				"Datetime": str(datetime.now().astimezone(tz))
-			}
-		mqtt_trigger.trigger(json.dumps(dict))
+	dict = {
+			"Command": f"Doorbell: {keypad_input}",
+			"Location": location,
+			"Datetime": str(datetime.now().astimezone(tz))
+		}
+	mqtt_trigger_log(dict)
 
 def logic(keypad_input, location):
 	try:
@@ -214,15 +211,14 @@ def logic(keypad_input, location):
 		accessLevel = "error"
 		codeName = "BadCode"
 	
-	if mqtt_trigger is not None:
-		dict = {
-				"AccessLevel": accessLevel,
-				"AccessCode": keypad_input,
-				"Command": f"{location.capitalize()} {codeName} ",
-				"Location": location,
-				"Datetime": str(datetime.now().astimezone(tz))
-			}
-		mqtt_trigger.trigger(json.dumps(dict))
+	dict = {
+			"AccessLevel": accessLevel,
+			"AccessCode": keypad_input,
+			"Command": f"{location.capitalize()} {codeName} ",
+			"Location": location,
+			"Datetime": str(datetime.now().astimezone(tz))
+		}
+	mqtt_trigger_log(dict)
 	if mqtt_binary_sensor is not None:
 		mqtt_binary_sensor.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
 
@@ -380,6 +376,13 @@ MQTT_DEVICE_NAME = f"{MQTT_BASE_NAME}-AccessControl"
 MQTT_BASE_IDENTIFIER = "liq"
 MQTT_DEVICE_IDENTIFIER = f"{MQTT_BASE_IDENTIFIER}-gatepi"
 
+def mqtt_trigger_log(dict):
+	if mqtt_trigger is not None:
+		mqtt_trigger.trigger(json.dumps(dict))
+	else:
+		logging.info("mqtt_trigger not set up. unable to log.")
+
+
 # # Configure the required parameters for the MQTT broker
 mqtt_settings = Settings.MQTT(host=MQTT_HOST)
 
@@ -397,40 +400,35 @@ def create_button_function(name_suffix, callback):
 		button.write_config()
 	return button_function
 
-mqtt_trigger = None
-def create_trigger_function():
-	def trigger_function():
-		mqtt_trigger_info = DeviceTriggerInfo(name="MyTrigger", type="button_press", subtype="button_1", unique_id="unique id", device=device_info)
-		mqtt_trigger_settings = Settings(mqtt=mqtt_settings, entity=mqtt_trigger_info)
-		mqtt_trigger = DeviceTrigger(mqtt_trigger_settings)
-	return trigger_function
-
-mqtt_binary_sensor = None
-def create_binary_sensor_function(name_suffix, callback):
-	def binary_sensor_function():
-		info = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-{name_suffix}", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-{name_suffix}", device=device_info)
-		settings = Settings(mqtt=mqtt_settings, entity=info)
-		mqtt_binary_sensor = BinarySensor(settings, callback, user_data)
-		mqtt_binary_sensor.write_config()
-	return binary_sensor_function
-
 def create_callback_function(command, action):
 	def callback(client: Client, user_data, message: MQTTMessage):
-		if mqtt_trigger is not None:
-			dict = {"Command": f"HA Override {command}"}
-			mqtt_trigger.trigger(json.dumps(dict))
+		dict = {"Command": f"HA Override {command}"}
+		mqtt_trigger_log(dict)
 		logging.info(f"{command} triggered from HomeAssistant")
-		logging.info(f"{client} {message}")
+		logging.info(f"{message.payload}")
 		action()
 	return callback
 
+def create_trigger_function():
+	global mqtt_trigger
+	try:
+		mqtt_trigger_info = DeviceTriggerInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-device-log-trigger", type="button_press", subtype="device-log", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-device-log-trigger", device=device_info)
+		mqtt_trigger_settings = Settings(mqtt=mqtt_settings, entity=mqtt_trigger_info)
+		mqtt_trigger = DeviceTrigger(mqtt_trigger_settings)
+	except Exception as e:
+		logging.warning(f"Failed to set up MQTT trigger: {e}")
+		mqtt_trigger = None
+
 def create_binary_sensor_function():
-	def binary_sensor_function():
-		AccessCodeUsed = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-access-code-entered", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-accesscode-sensor", device=device_info)
-		AccessCodeUsed_settings = Settings(mqtt=mqtt_settings, entity=AccessCodeUsed)
-		mqtt_accesscode = BinarySensor(AccessCodeUsed_settings)
-		mqtt_accesscode.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone(tz))})
-	return binary_sensor_function
+	global mqtt_binary_sensor
+	try:
+		info = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-access-code-entered", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-access-code-entered", device=device_info)
+		settings = Settings(mqtt=mqtt_settings, entity=info)
+		mqtt_binary_sensor = BinarySensor(settings)
+		mqtt_binary_sensor.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone(tz))})
+	except Exception as e:
+		logging.warning(f"Failed to set up MQTT binary sensor: {e}")
+		mqtt_binary_sensor = None
 
 # Define the button functions
 create_mqtt_gate_open_button = create_button_function("gate-open", create_callback_function("OPEN", lambda: gate.open()))
