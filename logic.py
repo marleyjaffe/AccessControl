@@ -102,7 +102,7 @@ async def keypad(device, location):
 					else:
 						logging.error(f"Keypad Location variable not found")
 					
-					logging.info(f"Key pressed: {keypressed} at location: {location }")
+					logging.debug(f"Key pressed: {keypressed} at location: {location }")
 
 					if keypressed == 'ENTR':
 						logic(keypad_string, location)
@@ -222,7 +222,7 @@ def logic(keypad_input, location):
 	if mqtt_binary_sensor is not None:
 		mqtt_binary_sensor.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
 
-	logging.info(f"Name: {codeName} | AccessCode: {keypad_input} | AccessLevel: {accessLevel} ")
+	logging.info(f"Name: {codeName} | AccessCode: {keypad_input} | AccessLevel: {accessLevel} | Keypad: {location} ")
 	if accessLevel == "gate":
 		logging.info(f"OPEN function triggered")
 		gate.open()
