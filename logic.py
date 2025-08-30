@@ -220,7 +220,7 @@ def logic(keypad_input, location):
 		}
 	mqtt_trigger_log(dict)
 	if mqtt_binary_sensor is not None:
-		mqtt_binary_sensor.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz))})
+		mqtt_binary_sensor.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz)), "Location": location})
 
 	logging.info(f"Name: {codeName} | AccessCode: {keypad_input} | AccessLevel: {accessLevel} | Keypad: {location} ")
 	if accessLevel == "gate":
