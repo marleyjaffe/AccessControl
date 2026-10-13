@@ -271,8 +271,8 @@ class lock:
 class gate:
 	personTime = 10
 	toggle_length = .3
-	stop_hold_timeout = 60 * 5
-	hard_open_timeout = 60 * 1
+	stop_hold_timeout = 60 * 60 * 24
+	hard_open_timeout = 60 * 60 * 1
 	
 	def __init__(self, name, pins):
 		self.name = name
@@ -372,10 +372,10 @@ class gate:
 
 #######MQTT#######
 
-MQTT_HOST = "192.168.1.7"
-MQTT_BASE_NAME = "Liq"
+MQTT_HOST = "10.10.10.3"
+MQTT_BASE_NAME = "Catt"
 MQTT_DEVICE_NAME = f"{MQTT_BASE_NAME}-AccessControl"
-MQTT_BASE_IDENTIFIER = "liq"
+MQTT_BASE_IDENTIFIER = "catt"
 MQTT_DEVICE_IDENTIFIER = f"{MQTT_BASE_IDENTIFIER}-gatepi"
 
 def mqtt_trigger_log(dict):
