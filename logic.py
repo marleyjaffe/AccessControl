@@ -50,6 +50,70 @@ gpioClose = gpiozero.OutputDevice(C_PIN, active_high=True, initial_value=False)
 gpioStop = gpiozero.OutputDevice(S_PIN, active_high=True, initial_value=False)
 gpioLock = gpiozero.OutputDevice(L_PIN, active_high=True, initial_value=False)
 
+#Reed switch pin num variables (BCM). Physical header pins 16, 18, 22 with GND on pin 20.
+#Wired between GPIO and GND using the internal pull-up: magnet present (closed) = LOW
+GATE_REED_PIN = 23
+MAILBOX1_REED_PIN = 24
+MAILBOX2_REED_PIN = 25
+
+class reedSwitch:
+	'''
+	Magnetic reed switch. Reports open/closed locally (isOpen, listeners) and to HA over MQTT.
+	Listeners are called as callback(reedSwitch) from the gpiozero thread on every state change.
+	'''
+	bounce_time = 0.1
+
+	def __init__(self, name, key, gpioNumber):
+		self.name = name
+		self.key = key
+		self.pin = gpioNumber
+		self.mqtt_sensor = None
+		self.listeners = []
+		self.last_changed = datetime.now().astimezone(tz)
+		self.device = gpiozero.Button(gpioNumber, pull_up=True, bounce_time=self.bounce_time)
+		self.device.when_pressed = self._changed
+		self.device.when_released = self._changed
+
+	@property
+	def isOpen(self):
+		# pressed == pin pulled LOW == magnet present == closed
+		return not self.device.is_pressed
+
+	@property
+	def state(self):
+		return "open" if self.isOpen else "closed"
+
+	def add_listener(self, callback: Callable):
+		self.listeners.append(callback)
+
+	def _changed(self):
+		self.last_changed = datetime.now().astimezone(tz)
+		logging.info(f"{self.name} {self.state.upper()}")
+		self.publish()
+		for callback in self.listeners:
+			try:
+				callback(self)
+			except Exception as error:
+				logging.error(f"{self.name} listener error: {error}")
+
+	def publish(self):
+		if self.mqtt_sensor is None:
+			logging.debug(f"{self.name} mqtt sensor not set up. unable to publish.")
+			return
+		try:
+			if self.isOpen:
+				self.mqtt_sensor.on()
+			else:
+				self.mqtt_sensor.off()
+			self.mqtt_sensor.set_attributes({"State": self.state, "LastChanged": str(self.last_changed), "GPIO": self.pin})
+		except Exception as error:
+			logging.warning(f"Failed to publish {self.name} state: {error}")
+
+gateReed = reedSwitch("Gate", "gate", GATE_REED_PIN)
+mailbox1Reed = reedSwitch("Mailbox 1", "mailbox-1", MAILBOX1_REED_PIN)
+mailbox2Reed = reedSwitch("Mailbox 2", "mailbox-2", MAILBOX2_REED_PIN)
+reed_switches = [gateReed, mailbox1Reed, mailbox2Reed]
+
 #Keyboard device mapping
 kbd_outside = evdev.InputDevice('/dev/input/by-path/keypad1')
 kbd_inside =  evdev.InputDevice('/dev/input/by-path/keypad2')
@@ -274,11 +338,17 @@ class gate:
 	stop_hold_timeout = 60 * 60 * 24
 	hard_open_timeout = 60 * 60 * 1
 	
-	def __init__(self, name, pins):
+	def __init__(self, name, pins, reed=None):
 		self.name = name
 		self.pinArray = pins
+		self.reed = reed
 		self.isStopped = False
 		self.isHardOpen = False
+
+	@property
+	def isOpen(self):
+		# None when no reed switch is attached (position unknown)
+		return self.reed.isOpen if self.reed is not None else None
 		
 	def open(self, isHardOpen=False):
 		self.releaseHardOpen()
@@ -432,6 +502,15 @@ def create_binary_sensor_function():
 		logging.warning(f"Failed to set up MQTT binary sensor: {e}")
 		mqtt_binary_sensor = None
 
+def create_reed_switch_sensor_function(reed):
+	def reed_switch_sensor_function():
+		info = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-{reed.key}-contact", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-{reed.key}-contact", device_class="opening", device=device_info)
+		settings = Settings(mqtt=mqtt_settings, entity=info)
+		reed.mqtt_sensor = BinarySensor(settings)
+		# publish current state so HA is correct after boot/reconnect
+		reed.publish()
+	return reed_switch_sensor_function
+
 # Define the button functions
 create_mqtt_gate_open_button = create_button_function("gate-open", create_callback_function("OPEN", lambda: gate.open()))
 create_mqtt_gate_hold_open_button = create_button_function("gate-hold-open", create_callback_function("HOLD OPEN", lambda: gate.open(True)))
@@ -448,7 +527,7 @@ functions_to_call = [
 	create_mqtt_gate_release_stop_button,
 	create_trigger_function,
 	create_binary_sensor_function
-]
+] + [create_reed_switch_sensor_function(reed) for reed in reed_switches]
 
 # Retry logic
 def retry_on_network_error(func, delay=10):
@@ -507,7 +586,7 @@ if __name__ == '__main__' :
 		'''
 		Setup gate object
 		'''
-		gate = gate("gate1", {"open": O_PIN, "close": C_PIN, "stop": S_PIN})
+		gate = gate("gate1", {"open": O_PIN, "close": C_PIN, "stop": S_PIN}, reed=gateReed)
 
 		'''
 		Setup database connection

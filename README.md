@@ -7,6 +7,16 @@ It will create, update and search codes against SQLite DB. Keyboard input it wil
 ## Physical Setup
 GPIO pins should be hooked up to external relay to interface with gate motor controller and automatic door lock.
 
+### Reed switches
+Wired between GPIO and GND using the Pi's internal pull-up (magnet present / closed = LOW). Each is published to Home Assistant as an MQTT binary sensor (device class `opening`, on = open).
+
+| Sensor    | BCM GPIO | Physical pin |
+|-----------|----------|--------------|
+| Gate      | 23       | 16           |
+| Mailbox 1 | 24       | 18           |
+| Mailbox 2 | 25       | 22           |
+| GND       | -        | 20           |
+
 ## Docker Setup
 First, make soft-links to the keyboards since you can't pass paths that have variables:
 Add the following to `sudo crontab -e` to keep persistent through reboots:
