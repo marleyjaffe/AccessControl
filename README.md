@@ -74,6 +74,31 @@ services:
 ```
 If you change `KEYPAD_*_DEVICE` or `DB_PATH`, update the matching `devices:` / `volumes:` container paths. The same applies to the gpiochip.
 
+### MQTT password via Docker secret
+Keeps the broker password out of the compose file and `docker inspect` output. Create the secret file on the Pi (readable only by you):
+```sh
+printf '%s' 'your-mqtt-password' > ~/docker/AccessControl/mqtt_password.txt
+chmod 600 ~/docker/AccessControl/mqtt_password.txt
+```
+Then reference it in compose. Compose mounts it in the container at `/run/secrets/<secret name>`:
+```yaml
+services:
+  accesscontrol:
+    # ...image, volumes, devices as above...
+    environment:
+      MQTT_HOST: 10.10.10.3
+      MQTT_BASE_NAME: Catt
+      MQTT_USERNAME: accesscontrol
+      MQTT_PASSWORD_FILE: /run/secrets/mqtt_password
+    secrets:
+      - mqtt_password
+
+secrets:
+  mqtt_password:
+    file: ~/docker/AccessControl/mqtt_password.txt
+```
+`MQTT_PASSWORD_FILE` takes precedence over `MQTT_PASSWORD`. Leading/trailing whitespace (e.g. a trailing newline) is stripped. If the file is missing or unreadable, MQTT is disabled with a warning and the keypads and gate keep working. Keep the secret file out of git.
+
 ### General
 | Variable    | Default               | Description |
 |-------------|-----------------------|-------------|
