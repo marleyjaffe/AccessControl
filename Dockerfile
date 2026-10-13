@@ -12,6 +12,7 @@ RUN pip3 install asyncio --break-system-packages
 # RUN pip3 install RPi.GPIO
 
 #COPY "./database.sqlite3" "/database.sqlite3"
+COPY "./config.py" "/config.py"
 COPY "./db_utils.py" "/db_utils.py"
 COPY "./logic.py" "/logic.py"
 

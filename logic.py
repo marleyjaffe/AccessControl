@@ -10,6 +10,7 @@ Trigger Home Assistant Event (MQTT)
 # python 3.10
 
 from db_utils import *
+import config
 
 import json
 import logging
@@ -32,36 +33,36 @@ from paho.mqtt.client import Client, MQTTMessage
 import asyncio, evdev
 from evdev import InputDevice, categorize, ecodes
 
-tz = ZoneInfo('America/Los_Angeles')
+tz = ZoneInfo(config.TZ)
 
 logging.Formatter.converter = time.localtime
 logging.basicConfig(format='%(asctime)s %(levelname)s- %(message)s',
 					datefmt='%Y-%m-%d %H:%M:%S')
-logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().setLevel(config.LOG_LEVEL)
 
 #set pin num variables
-O_PIN = 6
-C_PIN = 13
-S_PIN = 19
-L_PIN = 26
+O_PIN = config.GATE_OPEN_PIN
+C_PIN = config.GATE_CLOSE_PIN
+S_PIN = config.GATE_STOP_PIN
+L_PIN = config.LOCK_PIN
 
 gpioOpen = gpiozero.OutputDevice(O_PIN, active_high=True, initial_value=False)
 gpioClose = gpiozero.OutputDevice(C_PIN, active_high=True, initial_value=False)
 gpioStop = gpiozero.OutputDevice(S_PIN, active_high=True, initial_value=False)
 gpioLock = gpiozero.OutputDevice(L_PIN, active_high=True, initial_value=False)
 
-#Reed switch pin num variables (BCM). Physical header pins 16, 18, 22 with GND on pin 20.
+#Reed switch pin num variables (BCM). Defaults: physical header pins 16, 18, 22 with GND on pin 20.
 #Wired between GPIO and GND using the internal pull-up: magnet present (closed) = LOW
-GATE_REED_PIN = 23
-MAILBOX1_REED_PIN = 24
-MAILBOX2_REED_PIN = 25
+GATE_REED_PIN = config.GATE_REED_PIN
+MAILBOX1_REED_PIN = config.MAILBOX1_REED_PIN
+MAILBOX2_REED_PIN = config.MAILBOX2_REED_PIN
 
 class reedSwitch:
 	'''
 	Magnetic reed switch. Reports open/closed locally (isOpen, listeners) and to HA over MQTT.
 	Listeners are called as callback(reedSwitch) from the gpiozero thread on every state change.
 	'''
-	bounce_time = 0.1
+	bounce_time = config.REED_BOUNCE_TIME
 
 	def __init__(self, name, key, gpioNumber):
 		self.name = name
@@ -115,8 +116,8 @@ mailbox2Reed = reedSwitch("Mailbox 2", "mailbox-2", MAILBOX2_REED_PIN)
 reed_switches = [gateReed, mailbox1Reed, mailbox2Reed]
 
 #Keyboard device mapping
-kbd_outside = evdev.InputDevice('/dev/input/by-path/keypad1')
-kbd_inside =  evdev.InputDevice('/dev/input/by-path/keypad2')
+kbd_outside = evdev.InputDevice(config.KEYPAD_OUTSIDE_DEVICE)
+kbd_inside =  evdev.InputDevice(config.KEYPAD_INSIDE_DEVICE)
 
 #prevent other applications from receiveing keypad input
 kbd_outside.grab()
@@ -125,8 +126,8 @@ kbd_inside.grab()
 #set initial keypad string
 isKeypadActive = False
 keypad_string = ''
-keypad_string_max_length = 9
-keypad_string_timeout = 10
+keypad_string_max_length = config.KEYPAD_CODE_MAX_LENGTH
+keypad_string_timeout = config.KEYPAD_CODE_TIMEOUT
 keypad_last_pressed_time = time.time()
 
 #ASCII Mapping for Inside Keypad
@@ -320,7 +321,7 @@ def gpioCleanup():
 	logging.debug(f"GPIO clean up not necessary with new library, EndOfFunction")
 
 class lock:
-	default_time = 15
+	default_time = config.LOCK_UNLOCK_TIME
 	
 	def __init__(self, name, gpioNumber):
 		self.name = name
@@ -333,10 +334,10 @@ class lock:
 		gpioLock.off()
 
 class gate:
-	personTime = 10
-	toggle_length = .3
-	stop_hold_timeout = 60 * 60 * 24
-	hard_open_timeout = 60 * 60 * 1
+	personTime = config.GATE_PERSON_TIME
+	toggle_length = config.GATE_TOGGLE_LENGTH
+	stop_hold_timeout = config.GATE_STOP_HOLD_TIMEOUT
+	hard_open_timeout = config.GATE_HOLD_OPEN_TIMEOUT
 	
 	def __init__(self, name, pins, reed=None):
 		self.name = name
@@ -442,10 +443,10 @@ class gate:
 
 #######MQTT#######
 
-MQTT_HOST = "10.10.10.3"
-MQTT_BASE_NAME = "Catt"
+MQTT_HOST = config.MQTT_HOST
+MQTT_BASE_NAME = config.MQTT_BASE_NAME
 MQTT_DEVICE_NAME = f"{MQTT_BASE_NAME}-AccessControl"
-MQTT_BASE_IDENTIFIER = "catt"
+MQTT_BASE_IDENTIFIER = config.MQTT_BASE_IDENTIFIER
 MQTT_DEVICE_IDENTIFIER = f"{MQTT_BASE_IDENTIFIER}-gatepi"
 
 def mqtt_trigger_log(dict):
@@ -456,7 +457,13 @@ def mqtt_trigger_log(dict):
 
 
 # # Configure the required parameters for the MQTT broker
-mqtt_settings = Settings.MQTT(host=MQTT_HOST)
+mqtt_settings = Settings.MQTT(
+	host=MQTT_HOST,
+	port=config.MQTT_PORT,
+	username=config.MQTT_USERNAME,
+	password=config.MQTT_PASSWORD,
+	discovery_prefix=config.MQTT_DISCOVERY_PREFIX
+)
 
 # # Define the device. At least one of `identifiers` or `connections` must be supplied
 device_info = DeviceInfo(name=MQTT_DEVICE_NAME, identifiers=MQTT_DEVICE_IDENTIFIER)
