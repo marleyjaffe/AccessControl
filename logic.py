@@ -28,6 +28,7 @@ from typing import Callable
 from ha_mqtt_discoverable import Settings, DeviceInfo
 from ha_mqtt_discoverable.sensors import Cover, CoverInfo, Button, ButtonInfo, Text, TextInfo, BinarySensor, BinarySensorInfo, DeviceTriggerInfo, DeviceTrigger
 from paho.mqtt.client import Client, MQTTMessage
+from paho.mqtt.enums import CallbackAPIVersion
 
 #Keyboard Imports
 import asyncio, evdev
@@ -98,8 +99,8 @@ class reedSwitch:
 				logging.error(f"{self.name} listener error: {error}")
 
 	def publish(self):
-		if self.mqtt_sensor is None:
-			logging.debug(f"{self.name} mqtt sensor not set up. unable to publish.")
+		if self.mqtt_sensor is None or not mqtt_is_connected():
+			logging.debug(f"{self.name} MQTT offline. not published.")
 			return
 		try:
 			if self.isOpen:
@@ -284,8 +285,7 @@ def logic(keypad_input, location):
 			"Datetime": str(datetime.now().astimezone(tz))
 		}
 	mqtt_trigger_log(dict)
-	if mqtt_binary_sensor is not None:
-		mqtt_binary_sensor.set_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz)), "Location": location})
+	mqtt_set_access_attributes({"AccessLevel": accessLevel, "AccessCode": keypad_input, "Name": codeName, "Datetime": str(datetime.now().astimezone(tz)), "Location": location})
 
 	logging.info(f"Name: {codeName} | AccessCode: {keypad_input} | AccessLevel: {accessLevel} | Keypad: {location} ")
 	if accessLevel == "gate":
@@ -442,131 +442,153 @@ class gate:
 		gpioStop.off()
 
 #######MQTT#######
+# MQTT is optional. Nothing here may block or raise into the keypad/gate path:
+# - a single shared paho client connects in the background (connect_async + loop_start)
+#   and retries forever, so a missing broker never delays startup
+# - HA entities are (re)created in on_connect, so they come back after broker/HA restarts
+# - publish helpers swallow errors; when offline, events are only logged locally
 
-MQTT_HOST = config.MQTT_HOST
 MQTT_BASE_NAME = config.MQTT_BASE_NAME
 MQTT_DEVICE_NAME = f"{MQTT_BASE_NAME}-AccessControl"
 MQTT_BASE_IDENTIFIER = config.MQTT_BASE_IDENTIFIER
 MQTT_DEVICE_IDENTIFIER = f"{MQTT_BASE_IDENTIFIER}-gatepi"
 
+mqtt_client = None
+mqtt_trigger = None
+mqtt_binary_sensor = None
+
+def mqtt_is_connected():
+	return mqtt_client is not None and mqtt_client.is_connected()
+
 def mqtt_trigger_log(dict):
-	if mqtt_trigger is not None:
+	if mqtt_trigger is None or not mqtt_is_connected():
+		logging.debug(f"MQTT offline, not sent: {dict}")
+		return
+	try:
 		mqtt_trigger.trigger(json.dumps(dict))
-	else:
-		logging.info("mqtt_trigger not set up. unable to log.")
+	except Exception as error:
+		logging.warning(f"Failed to send MQTT trigger: {error}")
 
-
-# # Configure the required parameters for the MQTT broker
-mqtt_settings = Settings.MQTT(
-	host=MQTT_HOST,
-	port=config.MQTT_PORT,
-	username=config.MQTT_USERNAME,
-	password=config.MQTT_PASSWORD,
-	discovery_prefix=config.MQTT_DISCOVERY_PREFIX
-)
-
-# # Define the device. At least one of `identifiers` or `connections` must be supplied
-device_info = DeviceInfo(name=MQTT_DEVICE_NAME, identifiers=MQTT_DEVICE_IDENTIFIER)
-
-# # Define an optional object to be passed back to the callback
-user_data = "Some custom data"
-
-def create_button_function(name_suffix, callback):
-	def button_function():
-		info = ButtonInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-{name_suffix}", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-{name_suffix}", device=device_info)
-		settings = Settings(mqtt=mqtt_settings, entity=info)
-		button = Button(settings, callback, user_data)
-		button.write_config()
-	return button_function
+def mqtt_set_access_attributes(attributes):
+	if mqtt_binary_sensor is None or not mqtt_is_connected():
+		return
+	try:
+		mqtt_binary_sensor.set_attributes(attributes)
+	except Exception as error:
+		logging.warning(f"Failed to set MQTT access attributes: {error}")
 
 def create_callback_function(command, action):
 	def callback(client: Client, user_data, message: MQTTMessage):
-		dict = {"Command": f"HA Override {command}"}
-		mqtt_trigger_log(dict)
-		logging.info(f"{command} triggered from HomeAssistant")
-		logging.info(f"{message.payload}")
-		action()
+		try:
+			mqtt_trigger_log({"Command": f"HA Override {command}"})
+			logging.info(f"{command} triggered from HomeAssistant")
+			logging.debug(f"{message.payload}")
+			action()
+		except Exception as error:
+			logging.error(f"HA {command} failed: {error}")
 	return callback
 
-def create_trigger_function():
-	global mqtt_trigger
-	try:
-		mqtt_trigger_info = DeviceTriggerInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-device-log-trigger", type="button_press", subtype="device-log", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-device-log-trigger", device=device_info)
-		mqtt_trigger_settings = Settings(mqtt=mqtt_settings, entity=mqtt_trigger_info)
-		mqtt_trigger = DeviceTrigger(mqtt_trigger_settings)
-	except Exception as e:
-		logging.warning(f"Failed to set up MQTT trigger: {e}")
-		mqtt_trigger = None
+# (name suffix, command label, action) for HA buttons
+mqtt_buttons = [
+	("gate-open", "OPEN", lambda: gate.open()),
+	("gate-hold-open", "HOLD OPEN", lambda: gate.open(True)),
+	("gate-close", "CLOSE", lambda: gate.close()),
+	("gate-stop", "STOP", lambda: gate.stop()),
+	("gate-release_stop", "RELEASE STOP", lambda: gate.releaseStop()),
+]
 
-def create_binary_sensor_function():
-	global mqtt_binary_sensor
-	try:
-		info = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-access-code-entered", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-access-code-entered", device=device_info)
-		settings = Settings(mqtt=mqtt_settings, entity=info)
-		mqtt_binary_sensor = BinarySensor(settings)
-		mqtt_binary_sensor.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone(tz))})
-	except Exception as e:
-		logging.warning(f"Failed to set up MQTT binary sensor: {e}")
-		mqtt_binary_sensor = None
+def mqtt_create_entities(mqtt_settings, device_info):
+	'''Create/refresh all HA entities. Each entity is independent so one failure does not block the rest.'''
+	global mqtt_trigger, mqtt_binary_sensor
 
-def create_reed_switch_sensor_function(reed):
-	def reed_switch_sensor_function():
-		info = BinarySensorInfo(name=f"{MQTT_BASE_IDENTIFIER}-gatepi-{reed.key}-contact", unique_id=f"{MQTT_BASE_IDENTIFIER}-gatepi-{reed.key}-contact", device_class="opening", device=device_info)
-		settings = Settings(mqtt=mqtt_settings, entity=info)
-		reed.mqtt_sensor = BinarySensor(settings)
-		# publish current state so HA is correct after boot/reconnect
-		reed.publish()
-	return reed_switch_sensor_function
+	def entity_id(suffix):
+		return f"{MQTT_BASE_IDENTIFIER}-gatepi-{suffix}"
 
-# Define the button functions
-create_mqtt_gate_open_button = create_button_function("gate-open", create_callback_function("OPEN", lambda: gate.open()))
-create_mqtt_gate_hold_open_button = create_button_function("gate-hold-open", create_callback_function("HOLD OPEN", lambda: gate.open(True)))
-create_mqtt_gate_close_button = create_button_function("gate-close", create_callback_function("CLOSE", lambda: gate.close()))
-create_mqtt_gate_stop_button = create_button_function("gate-stop", create_callback_function("STOP", lambda: gate.stop()))
-create_mqtt_gate_release_stop_button = create_button_function("gate-release_stop", create_callback_function("RELEASE STOP", lambda: gate.releaseStop()))
-
-# List of functions to be called
-functions_to_call = [
-	create_mqtt_gate_open_button, 
-	create_mqtt_gate_hold_open_button, 
-	create_mqtt_gate_close_button, 
-	create_mqtt_gate_stop_button, 
-	create_mqtt_gate_release_stop_button,
-	create_trigger_function,
-	create_binary_sensor_function
-] + [create_reed_switch_sensor_function(reed) for reed in reed_switches]
-
-# Retry logic
-def retry_on_network_error(func, delay=10):
-	attempt = 0
-	while True:
-		logging.debug(f"Retry {attempt} in {delay} seconds...")
+	for suffix, command, action in mqtt_buttons:
 		try:
-			func()
-			break
-		except OSError as error:
-			if error.errno == 101:
-				attempt += 1
-				logging.debug(f"Network unreachable.")
-				logging.debug(f"Retry {attempt} in {delay} seconds...")
-				time.sleep(delay)
-			else:
-				logging.debug(f"Unhandled OSError in {func.__name__}: {error.errno}")
-				logging.debug(f"Retry {attempt} in {delay} seconds...")
-				break
+			info = ButtonInfo(name=entity_id(suffix), unique_id=entity_id(suffix), device=device_info)
+			Button(Settings(mqtt=mqtt_settings, entity=info), create_callback_function(command, action)).write_config()
 		except Exception as error:
-			logging.debug(f"Unhandled Exception in {func.__name__}: {error}: {error.errno}")
-			logging.debug(f"Retry {attempt} in {delay} seconds...")
-			break
+			logging.warning(f"Failed to set up MQTT button {suffix}: {error}")
 
-def start_retry_in_thread(func: Callable, delay=10):
-	thread = threading.Thread(target=retry_on_network_error, args=(func, delay))
-	thread.daemon = True  # Ensure the thread exits when the main program does
-	thread.start()
+	try:
+		info = DeviceTriggerInfo(name=entity_id("device-log-trigger"), type="button_press", subtype="device-log", unique_id=entity_id("device-log-trigger"), device=device_info)
+		trigger = DeviceTrigger(Settings(mqtt=mqtt_settings, entity=info))
+		trigger.write_config()
+		mqtt_trigger = trigger
+	except Exception as error:
+		logging.warning(f"Failed to set up MQTT trigger: {error}")
 
-# Start all functions with retry logic in separate threads
-for func in functions_to_call:
-	start_retry_in_thread(func)
+	try:
+		info = BinarySensorInfo(name=entity_id("access-code-entered"), unique_id=entity_id("access-code-entered"), device=device_info)
+		sensor = BinarySensor(Settings(mqtt=mqtt_settings, entity=info))
+		if mqtt_binary_sensor is None:
+			sensor.set_attributes({"AccessLevel": "bootup", "AccessCode": "bootup",  "Name": "bootup", "Datetime": str(datetime.now().astimezone(tz))})
+		else:
+			sensor.write_config()
+		mqtt_binary_sensor = sensor
+	except Exception as error:
+		logging.warning(f"Failed to set up MQTT binary sensor: {error}")
+
+	for reed in reed_switches:
+		try:
+			info = BinarySensorInfo(name=entity_id(f"{reed.key}-contact"), unique_id=entity_id(f"{reed.key}-contact"), device_class="opening", device=device_info)
+			reed.mqtt_sensor = BinarySensor(Settings(mqtt=mqtt_settings, entity=info))
+			# publish current state so HA is correct after boot/reconnect
+			reed.publish()
+		except Exception as error:
+			logging.warning(f"Failed to set up MQTT {reed.name} sensor: {error}")
+
+def mqtt_start():
+	'''Start the background MQTT connection. Returns immediately; never raises.'''
+	global mqtt_client
+	for warning in config.WARNINGS:
+		logging.warning(warning)
+	if not config.MQTT_ENABLED:
+		return
+
+	try:
+		client = Client(callback_api_version=CallbackAPIVersion.VERSION2)
+		client.username_pw_set(config.MQTT_USERNAME, password=config.MQTT_PASSWORD)
+		client.reconnect_delay_set(min_delay=1, max_delay=60)
+
+		mqtt_settings = Settings.MQTT(
+			host=config.MQTT_HOST,
+			port=config.MQTT_PORT,
+			username=config.MQTT_USERNAME,
+			password=config.MQTT_PASSWORD,
+			discovery_prefix=config.MQTT_DISCOVERY_PREFIX,
+			client=client
+		)
+		# At least one of `identifiers` or `connections` must be supplied
+		device_info = DeviceInfo(name=MQTT_DEVICE_NAME, identifiers=MQTT_DEVICE_IDENTIFIER)
+
+		def on_connect(client, userdata, flags, reason_code, properties):
+			if reason_code.is_failure:
+				logging.warning(f"MQTT connection to {config.MQTT_HOST}:{config.MQTT_PORT} refused: {reason_code}")
+				return
+			logging.info(f"MQTT connected to {config.MQTT_HOST}:{config.MQTT_PORT}")
+			try:
+				mqtt_create_entities(mqtt_settings, device_info)
+			except Exception as error:
+				# never let an exception escape into (and kill) the paho network thread
+				logging.error(f"MQTT entity setup failed: {error}")
+
+		def on_disconnect(client, userdata, flags, reason_code, properties):
+			logging.warning(f"MQTT disconnected ({reason_code}). Keypads/gate continue offline; reconnecting in background.")
+
+		def on_connect_fail(client, userdata):
+			logging.debug(f"MQTT connection to {config.MQTT_HOST}:{config.MQTT_PORT} failed, retrying")
+
+		client.on_connect = on_connect
+		client.on_disconnect = on_disconnect
+		client.on_connect_fail = on_connect_fail
+		client.connect_async(config.MQTT_HOST, config.MQTT_PORT)
+		client.loop_start()
+		mqtt_client = client
+		logging.info(f"MQTT connecting to {config.MQTT_HOST}:{config.MQTT_PORT} in background")
+	except Exception as error:
+		logging.error(f"MQTT setup failed, running offline: {error}")
 
 if __name__ == '__main__' :
 	'''
@@ -594,6 +616,11 @@ if __name__ == '__main__' :
 		Setup gate object
 		'''
 		gate = gate("gate1", {"open": O_PIN, "close": C_PIN, "stop": S_PIN}, reed=gateReed)
+
+		'''
+		Start MQTT in the background (optional, never blocks keypads)
+		'''
+		mqtt_start()
 
 		'''
 		Setup database connection

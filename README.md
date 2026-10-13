@@ -39,7 +39,15 @@ docker build -t accesscontrol . && docker run -e MQTT_HOST=10.10.10.3 -e MQTT_BA
 docker run -d -e MQTT_HOST=10.10.10.3 -e MQTT_BASE_NAME=Catt --device /dev/gpiochip4:/dev/gpiochip4 --device /dev/input/by-path/keypad1:/dev/input/by-path/keypad1 --device /dev/input/by-path/keypad2:/dev/input/by-path/keypad2 -v ~/AccessControl/database.sqlite3:/database.sqlite3 --restart always --name AccessControl accesscontrol
 
 ## Configuration
-All site-specific values come from environment variables. `MQTT_HOST` and `MQTT_BASE_NAME` are required; the container exits at startup if either is missing. Everything else has a default. Invalid numbers also stop the container at startup.
+All site-specific values come from environment variables. Everything has a default except the MQTT connection, which is optional.
+
+### Offline operation
+Keypads, gate relays, the package lock and reed switches never depend on MQTT. The local SQLite code database is the only thing needed to operate the gate.
+- If `MQTT_HOST` or `MQTT_BASE_NAME` is not set, or an MQTT setting is invalid (bad `MQTT_PORT`, unreadable `MQTT_PASSWORD_FILE`), MQTT is disabled with a warning in the log and the keypads run normally.
+- If MQTT is configured but the broker is unreachable at boot or goes down later, the app keeps running and reconnects in the background (retrying every 1–60 s). When it reconnects it republishes all HA entities and the current reed switch states, and the HA buttons work again.
+- Events that happen while offline (code entries, overrides, reed changes) are logged locally but not queued or sent to HA later. Reed switch state is current again after reconnect.
+
+Invalid non-MQTT numbers (GPIO pins, timings) still stop the container at startup, because a wrong pin or timing could drive the wrong relay.
 
 ### Docker compose example
 ```yaml
@@ -76,13 +84,13 @@ If you change `KEYPAD_*_DEVICE` or `DB_PATH`, update the matching `devices:` / `
 ### MQTT / Home Assistant
 | Variable                | Default            | Description |
 |-------------------------|--------------------|-------------|
-| `MQTT_HOST`             | required           | Broker IP or hostname |
+| `MQTT_HOST`             | none (MQTT disabled) | Broker IP or hostname. Leave unset to run without HA |
 | `MQTT_PORT`             | `1883`             | Broker port |
 | `MQTT_USERNAME`         | none               | Broker username |
 | `MQTT_PASSWORD`         | none               | Broker password |
 | `MQTT_PASSWORD_FILE`    | none               | Path to a file containing the password (docker secrets). Takes precedence over `MQTT_PASSWORD` |
 | `MQTT_DISCOVERY_PREFIX` | `homeassistant`    | HA MQTT discovery prefix |
-| `MQTT_BASE_NAME`        | required           | HA device name becomes `<name>-AccessControl` |
+| `MQTT_BASE_NAME`        | none (required when `MQTT_HOST` is set) | HA device name becomes `<name>-AccessControl` |
 | `MQTT_BASE_IDENTIFIER`  | `MQTT_BASE_NAME` lowercased | Prefix for entity IDs, e.g. `<id>-gatepi-gate-open`. Changing it creates new entities in HA |
 
 ### GPIO (BCM numbering)

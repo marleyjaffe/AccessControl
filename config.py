@@ -2,22 +2,22 @@
 Runtime configuration from environment variables (set in docker compose `environment:` or an env_file).
 See README "Configuration" for the full list.
 
-Errors exit via sys.exit(message) rather than logging so that importing this module
-does not configure the root logger before logic.py does.
+Fatal errors exit via sys.exit(message) rather than logging so that importing this module
+does not configure the root logger before logic.py does. Non-fatal problems are collected
+in WARNINGS and logged by logic.py once logging is configured.
+
+MQTT is optional: missing or invalid MQTT settings disable MQTT (MQTT_ENABLED = False)
+instead of stopping the container, so the keypads and gate keep working offline.
 '''
 
 import os
 import sys
 
+WARNINGS = []
+
 def env_str(name, default=None):
 	value = os.environ.get(name, "").strip()
 	return value if value else default
-
-def env_required(name) -> str:
-	value = env_str(name)
-	if value is None:
-		sys.exit(f"CRITICAL- Required environment variable {name} is not set")
-	return value
 
 def env_int(name, default):
 	value = env_str(name)
@@ -33,26 +33,46 @@ def env_float(name, default):
 	except ValueError:
 		sys.exit(f"CRITICAL- Environment variable {name} must be a number, got {value!r}")
 
-def env_secret(name, default=None):
-	'''Reads NAME, or the contents of the file at NAME_FILE (docker secrets).'''
-	path = env_str(f"{name}_FILE")
-	if path:
-		with open(path) as f:
-			return f.read().strip()
-	return env_str(name, default)
-
 # General
 TZ = env_str("TZ", "America/Los_Angeles")
 LOG_LEVEL = env_str("LOG_LEVEL", "INFO").upper()
 
-# MQTT / Home Assistant
-MQTT_HOST = env_required("MQTT_HOST")
-MQTT_PORT = env_int("MQTT_PORT", 1883)
+# MQTT / Home Assistant (optional)
+MQTT_HOST = env_str("MQTT_HOST")
+MQTT_PORT = 1883
 MQTT_USERNAME = env_str("MQTT_USERNAME")
-MQTT_PASSWORD = env_secret("MQTT_PASSWORD")
+MQTT_PASSWORD = env_str("MQTT_PASSWORD")
 MQTT_DISCOVERY_PREFIX = env_str("MQTT_DISCOVERY_PREFIX", "homeassistant")
-MQTT_BASE_NAME = env_required("MQTT_BASE_NAME")
-MQTT_BASE_IDENTIFIER = env_str("MQTT_BASE_IDENTIFIER", MQTT_BASE_NAME.lower())
+MQTT_BASE_NAME = env_str("MQTT_BASE_NAME")
+MQTT_BASE_IDENTIFIER = env_str("MQTT_BASE_IDENTIFIER", MQTT_BASE_NAME.lower() if MQTT_BASE_NAME else None)
+MQTT_ENABLED = MQTT_HOST is not None
+
+def _disable_mqtt(reason):
+	global MQTT_ENABLED
+	MQTT_ENABLED = False
+	WARNINGS.append(f"MQTT disabled: {reason}. Keypads and gate will run offline.")
+
+if not MQTT_ENABLED:
+	WARNINGS.append("MQTT disabled: MQTT_HOST is not set. Keypads and gate will run offline.")
+else:
+	if MQTT_BASE_NAME is None:
+		_disable_mqtt("MQTT_BASE_NAME is not set")
+
+	_port = env_str("MQTT_PORT")
+	if _port is not None:
+		try:
+			MQTT_PORT = int(_port)
+		except ValueError:
+			_disable_mqtt(f"MQTT_PORT must be an integer, got {_port!r}")
+
+	# MQTT_PASSWORD_FILE (docker secrets) takes precedence over MQTT_PASSWORD
+	_password_file = env_str("MQTT_PASSWORD_FILE")
+	if _password_file is not None:
+		try:
+			with open(_password_file) as f:
+				MQTT_PASSWORD = f.read().strip()
+		except OSError as error:
+			_disable_mqtt(f"cannot read MQTT_PASSWORD_FILE {_password_file!r} ({error})")
 
 # Relay outputs (BCM)
 GATE_OPEN_PIN = env_int("GATE_OPEN_PIN", 6)
