@@ -185,7 +185,7 @@ async def keypad(device, location):
 						isKeypadActive = False
 					elif keypressed == 'STOP':
 						master_code(keypressed, location)
-						gate.stop(2)
+						gate.stop()
 						keypad_string = ''
 						isKeypadActive = False
 					elif keypressed == 'RELEASE':
@@ -302,10 +302,11 @@ def logic(keypad_input, location):
 		gate.close()
 	elif accessLevel == "stop":
 		logging.info(f"STOP function triggered")
-		gate.stop(2)
-	elif accessLevel == "party":
-		logging.info(f"PARTY function triggered")
-		gate.party()
+		gate.stop()
+	elif accessLevel in ("person", "party"):
+		# "party" is the legacy name for person open, kept so existing codes keep working
+		logging.info(f"PERSON OPEN function triggered")
+		gate.personOpen()
 	elif accessLevel == "disabled":
 		logging.critical(f"DISABLED gatecode attempted")
 	else:
@@ -334,6 +335,7 @@ class lock:
 		gpioLock.off()
 
 class gate:
+	personOpenLength = config.GATE_PERSON_OPEN_LENGTH
 	personTime = config.GATE_PERSON_TIME
 	toggle_length = config.GATE_TOGGLE_LENGTH
 	stop_hold_timeout = config.GATE_STOP_HOLD_TIMEOUT
@@ -345,13 +347,21 @@ class gate:
 		self.reed = reed
 		self.isStopped = False
 		self.isHardOpen = False
+		# person open runs in a background thread; this Event cancels the active run
+		self._personCancel = None
+		self._personLock = threading.Lock()
 
 	@property
 	def isOpen(self):
 		# None when no reed switch is attached (position unknown)
 		return self.reed.isOpen if self.reed is not None else None
+
+	@property
+	def isPersonOpen(self):
+		return self._personCancel is not None
 		
 	def open(self, isHardOpen=False):
+		self.cancelPersonOpen()
 		self.releaseHardOpen()
 		if isHardOpen:
 			logging.info(f"HOLD OPEN")
@@ -366,34 +376,70 @@ class gate:
 			gpioOpen.off()
 
 	def close(self):
+		self.cancelPersonOpen()
 		self.releaseHardOpen()
 		self.releaseStop()
 		gpioClose.on()
 		time.sleep(self.toggle_length)
 		gpioClose.off()
 
-	def stop(self, stoptime=toggle_length):
-		self.releaseHardOpen()
+	def stop(self):
+		'''Hold the stop relay until releaseStop()/open()/close(), or stop_hold_timeout (then close).'''
+		# set before cancelling so a running person open leaves the stop relay on for us
 		self.isStopped = True
+		self.cancelPersonOpen()
+		self.releaseHardOpen()
 
 		thread = threading.Thread(target=self.runAsyncMonitorIsStopped)
 		thread.start()
 
-	def personOpen(self, openLength=4):
+	# PERSON OPEN: open, stop at a person-width gap, hold, then close. Never blocks the caller.
+	def personOpen(self):
+		self.cancelPersonOpen()
 		self.releaseHardOpen()
 		self.releaseStop()
-		self.open()
-		time.sleep(openLength)
-		self.stop(self.personTime)
-		self.close()
+		cancel = threading.Event()
+		with self._personLock:
+			self._personCancel = cancel
+		thread = threading.Thread(target=self._personOpenSequence, args=(cancel,), daemon=True)
+		thread.start()
 
-	def party(self, openLength=4):
-		self.releaseHardOpen()
-		self.releaseStop()
+	def cancelPersonOpen(self):
+		'''Any other gate command takes over from a running person open.'''
+		with self._personLock:
+			cancel, self._personCancel = self._personCancel, None
+		if cancel is not None:
+			cancel.set()
 
-		self.open()
-		time.sleep(openLength)
-		self.stop()
+	def _personOpenSequence(self, cancel):
+		try:
+			logging.info(f"PERSON OPEN: opening for {self.personOpenLength}s")
+			gpioOpen.on()
+			time.sleep(self.toggle_length)
+			gpioOpen.off()
+			if cancel.wait(self.personOpenLength):
+				logging.info(f"PERSON OPEN cancelled while opening")
+				return
+
+			logging.info(f"PERSON OPEN: stopped for {self.personTime}s")
+			gpioStop.on()
+			if cancel.wait(self.personTime):
+				logging.info(f"PERSON OPEN cancelled while stopped")
+				# leave the stop relay on only if a STOP command took over
+				if not self.isStopped:
+					gpioStop.off()
+				return
+
+			with self._personLock:
+				if cancel.is_set():
+					return
+				self._personCancel = None
+			logging.info(f"PERSON OPEN: closing")
+			gpioStop.off()
+			self.close()
+		except Exception as error:
+			logging.error(f"PERSON OPEN failed: {error}")
+			gpioStop.off()
 
 	# HARD OPEN helper functions
 	def runAsyncMonitorIsHardOpen(self):
@@ -431,13 +477,19 @@ class gate:
 			self.releaseStop()
 			self.close()
 		finally:
-			self.releaseStop()
+			# relay cleanup only: this runs after the stop was already released, and must
+			# not cancel a person open that the release started
+			self._releaseStopRelay()
 
 	async def waitIsStoppedFalse(self):
 		while self.isStopped:
 			await asyncio.sleep(0.5)
 	
 	def releaseStop(self):
+		self.cancelPersonOpen()
+		self._releaseStopRelay()
+
+	def _releaseStopRelay(self):
 		self.isStopped = False
 		gpioStop.off()
 
@@ -495,6 +547,7 @@ mqtt_buttons = [
 	("gate-close", "CLOSE", lambda: gate.close()),
 	("gate-stop", "STOP", lambda: gate.stop()),
 	("gate-release_stop", "RELEASE STOP", lambda: gate.releaseStop()),
+	("gate-person-open", "PERSON OPEN", lambda: gate.personOpen()),
 ]
 
 def mqtt_create_entities(mqtt_settings, device_info):

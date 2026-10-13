@@ -142,7 +142,8 @@ secrets:
 | Variable                 | Default | Description |
 |--------------------------|---------|-------------|
 | `GATE_TOGGLE_LENGTH`     | `0.3`   | Relay pulse length for open/close |
-| `GATE_PERSON_TIME`       | `10`    | Stop duration for person open |
+| `GATE_PERSON_OPEN_LENGTH` | `4`   | Person open: seconds the gate opens before stopping (sets the gap width) |
+| `GATE_PERSON_TIME`       | `10`    | Person open: seconds the gate stays stopped at the gap before closing |
 | `GATE_STOP_HOLD_TIMEOUT` | `86400` | STOP is released and the gate closes after this |
 | `GATE_HOLD_OPEN_TIMEOUT` | `3600`  | HOLD OPEN is released and the gate closes after this |
 | `LOCK_UNLOCK_TIME`       | `15`    | Package lock unlock duration |
