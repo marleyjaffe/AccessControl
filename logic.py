@@ -616,10 +616,16 @@ def mqtt_start():
 		# At least one of `identifiers` or `connections` must be supplied
 		device_info = DeviceInfo(name=MQTT_DEVICE_NAME, identifiers=MQTT_DEVICE_IDENTIFIER)
 
+		# log connection problems once per outage instead of on every retry
+		link: dict[str, bool | None] = {"up": None}
+
 		def on_connect(client, userdata, flags, reason_code, properties):
 			if reason_code.is_failure:
-				logging.warning(f"MQTT connection to {config.MQTT_HOST}:{config.MQTT_PORT} refused: {reason_code}")
+				if link["up"] is not False:
+					logging.warning(f"MQTT connection to {config.MQTT_HOST}:{config.MQTT_PORT} refused: {reason_code}. Keypads/gate continue offline; retrying in background.")
+				link["up"] = False
 				return
+			link["up"] = True
 			logging.info(f"MQTT connected to {config.MQTT_HOST}:{config.MQTT_PORT}")
 			try:
 				mqtt_create_entities(mqtt_settings, device_info)
@@ -628,10 +634,14 @@ def mqtt_start():
 				logging.error(f"MQTT entity setup failed: {error}")
 
 		def on_disconnect(client, userdata, flags, reason_code, properties):
-			logging.warning(f"MQTT disconnected ({reason_code}). Keypads/gate continue offline; reconnecting in background.")
+			if link["up"]:
+				logging.warning(f"MQTT disconnected ({reason_code}). Keypads/gate continue offline; reconnecting in background.")
+				link["up"] = False
 
 		def on_connect_fail(client, userdata):
-			logging.debug(f"MQTT connection to {config.MQTT_HOST}:{config.MQTT_PORT} failed, retrying")
+			if link["up"] is None:
+				logging.warning(f"MQTT broker {config.MQTT_HOST}:{config.MQTT_PORT} unreachable. Keypads/gate continue offline; retrying in background.")
+				link["up"] = False
 
 		client.on_connect = on_connect
 		client.on_disconnect = on_disconnect

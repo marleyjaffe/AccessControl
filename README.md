@@ -18,6 +18,8 @@ Wired between GPIO and GND using the Pi's internal pull-up (magnet present / clo
 | GND       | -        | 20           |
 
 ## Docker Setup
+The Dockerfile pins the Python libraries (notably `ha-mqtt-discoverable` 0.26.0 / `paho-mqtt` 2.1.0, which `logic.py` requires). After pulling changes, rebuild with `docker build --pull -t accesscontrol:1 .` so the base image and pinned packages are refreshed rather than reused from an old cached layer.
+
 First, make soft-links to the keyboards since you can't pass paths that have variables:
 Add the following to `sudo crontab -e` to keep persistent through reboots:
 @reboot ln -s /dev/input/by-path/platform-xhci-hcd.1-usb-0:2:1.0-event-kbd /dev/input/by-path/keypad1
