@@ -586,7 +586,11 @@ def mqtt_create_entities(mqtt_settings, device_info):
 	for reed in reed_switches:
 		try:
 			info = BinarySensorInfo(name=entity_id(f"{reed.key}-contact"), unique_id=entity_id(f"{reed.key}-contact"), device_class="opening", device=device_info)
-			reed.mqtt_sensor = BinarySensor(Settings(mqtt=mqtt_settings, entity=info))
+			# retain=True: HA only receives this state if it is subscribed at the moment we publish.
+			# Without retain the state is lost after an HA/broker restart or a discovery config
+			# update (HA re-creates the entity, then subscribes), and the sensor stays `unknown`
+			# until the next magnet change.
+			reed.mqtt_sensor = BinarySensor(Settings(mqtt=mqtt_settings, entity=info), retain=True)
 			# publish current state so HA is correct after boot/reconnect
 			reed.publish()
 		except Exception as error:
@@ -646,9 +650,11 @@ def mqtt_start():
 		client.on_connect = on_connect
 		client.on_disconnect = on_disconnect
 		client.on_connect_fail = on_connect_fail
+		# assign before loop_start: on_connect (network thread) publishes the initial reed states,
+		# and publish() skips silently while mqtt_client is still None
+		mqtt_client = client
 		client.connect_async(config.MQTT_HOST, config.MQTT_PORT)
 		client.loop_start()
-		mqtt_client = client
 		logging.info(f"MQTT connecting to {config.MQTT_HOST}:{config.MQTT_PORT} in background")
 	except Exception as error:
 		logging.error(f"MQTT setup failed, running offline: {error}")
