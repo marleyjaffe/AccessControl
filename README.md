@@ -17,6 +17,13 @@ Wired between GPIO and GND using the Pi's internal pull-up (magnet present / clo
 | Mailbox 2 | 25       | 22           |
 | GND       | -        | 20           |
 
+### Gate cover (Home Assistant)
+The gate is also published as a native MQTT cover (`device_class: gate`, entity `cover.<name>_accesscontrol_<id>_gatepi_gate`) with Open / Stop / Close and an open / opening / closing / closed state, so HA, CarPlay and the Watch show the gate icon and state colour. The existing buttons and binary sensors are unchanged.
+- Only a closed-position reed exists, so the state is inferred: reed closed = `closed`; after an open command (or the reed leaving closed, e.g. a remote) = `opening` for `GATE_TRAVEL_TIME`, then `open`; after a close command = `closing` until the reed closes, or `open` with a warning if it is still open after 2 x `GATE_TRAVEL_TIME`.
+- Cover STOP is a momentary stop pulse. The latched STOP (held until RELEASE STOP or `GATE_STOP_HOLD_TIMEOUT`) and HOLD OPEN / PERSON OPEN stay on their buttons.
+- State is retained on the broker so HA shows it immediately after a restart.
+- Retained or empty MQTT commands are ignored on every command topic (HA never sends either). A stale retained command would otherwise fire a relay on every reconnect; clear one with an empty retained publish.
+
 ## Docker Setup
 The Dockerfile pins the Python libraries (notably `ha-mqtt-discoverable` 0.26.0 / `paho-mqtt` 2.1.0, which `logic.py` requires). After pulling changes, rebuild with `docker build --pull -t accesscontrol:1 .` so the base image and pinned packages are refreshed rather than reused from an old cached layer.
 
@@ -143,7 +150,8 @@ secrets:
 ### Timing (seconds)
 | Variable                 | Default | Description |
 |--------------------------|---------|-------------|
-| `GATE_TOGGLE_LENGTH`     | `0.3`   | Relay pulse length for open/close |
+| `GATE_TOGGLE_LENGTH`     | `0.3`   | Relay pulse length for open/close/stop pulse |
+| `GATE_TRAVEL_TIME`       | `15`    | HA cover: seconds shown as `opening` before `open`; `closing` gives up after 2x this |
 | `GATE_PERSON_OPEN_LENGTH` | `4`   | Person open: seconds the gate opens before stopping (sets the gap width) |
 | `GATE_PERSON_TIME`       | `10`    | Person open: seconds the gate stays stopped at the gap before closing |
 | `GATE_STOP_HOLD_TIMEOUT` | `86400` | STOP is released and the gate closes after this |

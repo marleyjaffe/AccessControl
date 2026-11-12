@@ -116,6 +116,102 @@ mailbox1Reed = reedSwitch("Mailbox 1", "mailbox-1", MAILBOX1_REED_PIN)
 mailbox2Reed = reedSwitch("Mailbox 2", "mailbox-2", MAILBOX2_REED_PIN)
 reed_switches = [gateReed, mailbox1Reed, mailbox2Reed]
 
+class gatePosition:
+	'''
+	Gate position for the HA cover (open / opening / closing / closed), inferred from the gate reed
+	switch plus the last gate command, because there is only a closed-position sensor.
+	- reed closed is authoritative: always "closed"
+	- open command (or the reed leaving closed with no command, e.g. a remote) -> "opening" for
+	  travel_time, then "open" (or back to "closed" if the reed never left closed)
+	- close command -> "closing" until the reed closes; after close_timeout still open -> "open" + warning
+	- stop -> "open" / "closed" from the reed
+	Runs locally from the reed; MQTT is only used to report it.
+	'''
+
+	def __init__(self, reed, travel_time):
+		self.reed = reed
+		self.travel_time = travel_time
+		self.close_timeout = travel_time * 2
+		self.mqtt_cover = None
+		self._lock = threading.Lock()
+		self._timer = None
+		self._generation = 0
+		self.state = "open" if reed.isOpen else "closed"
+		reed.add_listener(self._on_reed)
+
+	def commanded(self, command):
+		with self._lock:
+			isClosed = not self.reed.isOpen
+			if command == "open":
+				if self.state == "open" and not isClosed:
+					return
+				self._set("opening", self.travel_time)
+			elif command == "close":
+				if isClosed:
+					self._set("closed")
+				else:
+					self._set("closing", self.close_timeout)
+			elif command == "stop":
+				self._set("closed" if isClosed else "open")
+
+	def _on_reed(self, reed):
+		with self._lock:
+			if not reed.isOpen:
+				self._set("closed")
+			elif self.state == "closed":
+				# left closed: a commanded open already shows "opening"; this catches remotes/loops
+				self._set("opening", self.travel_time)
+
+	def _timeout(self, generation):
+		with self._lock:
+			if generation != self._generation:
+				return
+			isClosed = not self.reed.isOpen
+			if self.state == "opening":
+				if isClosed:
+					logging.info(f"Gate did not leave closed within {self.travel_time}s of OPEN")
+				self._set("closed" if isClosed else "open")
+			elif self.state == "closing":
+				if not isClosed:
+					logging.warning(f"Gate still open {self.close_timeout}s after CLOSE")
+				self._set("closed" if isClosed else "open")
+
+	def _set(self, state, timeout=None):
+		'''Caller must hold self._lock.'''
+		self._generation += 1
+		if self._timer is not None:
+			self._timer.cancel()
+			self._timer = None
+		if timeout:
+			self._timer = threading.Timer(timeout, self._timeout, args=(self._generation,))
+			self._timer.daemon = True
+			self._timer.start()
+		if state != self.state:
+			logging.info(f"Gate position {state.upper()}")
+		self.state = state
+		self.publish()
+
+	def publish(self):
+		if self.mqtt_cover is None or not mqtt_is_connected():
+			return
+		try:
+			{
+				"open": self.mqtt_cover.open,
+				"opening": self.mqtt_cover.opening,
+				"closing": self.mqtt_cover.closing,
+				"closed": self.mqtt_cover.closed,
+			}[self.state]()
+		except Exception as error:
+			logging.warning(f"Failed to publish gate cover state: {error}")
+
+	def attach(self, cover):
+		'''Called from on_connect: bind the (re)created HA cover and publish the current state.'''
+		with self._lock:
+			self.mqtt_cover = cover
+			self.publish()
+
+gatePos = gatePosition(gateReed, config.GATE_TRAVEL_TIME)
+
 #Keyboard device mapping
 kbd_outside = evdev.InputDevice(config.KEYPAD_OUTSIDE_DEVICE)
 kbd_inside =  evdev.InputDevice(config.KEYPAD_INSIDE_DEVICE)
@@ -341,10 +437,12 @@ class gate:
 	stop_hold_timeout = config.GATE_STOP_HOLD_TIMEOUT
 	hard_open_timeout = config.GATE_HOLD_OPEN_TIMEOUT
 	
-	def __init__(self, name, pins, reed=None):
+	def __init__(self, name, pins, reed=None, position=None):
 		self.name = name
 		self.pinArray = pins
 		self.reed = reed
+		# optional gatePosition, told about every command so the HA cover shows opening/closing
+		self.position = position
 		self.isStopped = False
 		self.isHardOpen = False
 		# person open runs in a background thread; this Event cancels the active run
@@ -359,6 +457,13 @@ class gate:
 	@property
 	def isPersonOpen(self):
 		return self._personCancel is not None
+
+	def _commanded(self, command):
+		if self.position is not None:
+			try:
+				self.position.commanded(command)
+			except Exception as error:
+				logging.error(f"Gate position update failed: {error}")
 		
 	def open(self, isHardOpen=False):
 		self.cancelPersonOpen()
@@ -374,6 +479,7 @@ class gate:
 			gpioOpen.on()
 			time.sleep(self.toggle_length)
 			gpioOpen.off()
+		self._commanded("open")
 
 	def close(self):
 		self.cancelPersonOpen()
@@ -382,6 +488,7 @@ class gate:
 		gpioClose.on()
 		time.sleep(self.toggle_length)
 		gpioClose.off()
+		self._commanded("close")
 
 	def stop(self):
 		'''Hold the stop relay until releaseStop()/open()/close(), or stop_hold_timeout (then close).'''
@@ -392,6 +499,21 @@ class gate:
 
 		thread = threading.Thread(target=self.runAsyncMonitorIsStopped)
 		thread.start()
+		self._commanded("stop")
+
+	def pulseStop(self):
+		'''
+		Momentary stop (HA cover STOP): halt the gate without latching the controller.
+		Cancels person open / hold open. If a latched STOP is already active it is left as is.
+		'''
+		self.cancelPersonOpen()
+		self.releaseHardOpen()
+		if not self.isStopped:
+			logging.info(f"STOP (pulse)")
+			gpioStop.on()
+			time.sleep(self.toggle_length)
+			gpioStop.off()
+		self._commanded("stop")
 
 	# PERSON OPEN: open, stop at a person-width gap, hold, then close. Never blocks the caller.
 	def personOpen(self):
@@ -403,6 +525,7 @@ class gate:
 			self._personCancel = cancel
 		thread = threading.Thread(target=self._personOpenSequence, args=(cancel,), daemon=True)
 		thread.start()
+		self._commanded("open")
 
 	def cancelPersonOpen(self):
 		'''Any other gate command takes over from a running person open.'''
@@ -423,6 +546,7 @@ class gate:
 
 			logging.info(f"PERSON OPEN: stopped for {self.personTime}s")
 			gpioStop.on()
+			self._commanded("stop")
 			if cancel.wait(self.personTime):
 				logging.info(f"PERSON OPEN cancelled while stopped")
 				# leave the stop relay on only if a STOP command took over
@@ -529,8 +653,25 @@ def mqtt_set_access_attributes(attributes):
 	except Exception as error:
 		logging.warning(f"Failed to set MQTT access attributes: {error}")
 
+def is_stale_command(message: MQTTMessage):
+	'''
+	HA never retains commands and never sends an empty one. A retained command is a stale broker
+	message that would be replayed on every (re)connect and fire a relay with nobody pressing
+	anything, so drop it, and drop the empty message that clearing it produces.
+	'''
+	if message.retain:
+		logging.warning(f"Ignored retained MQTT command on {message.topic}: {message.payload!r}. Clear it with an empty retained publish.")
+		return True
+	# clearing a retained message (empty retained publish) is delivered live as an empty message
+	if not message.payload:
+		logging.debug(f"Ignored empty MQTT command on {message.topic}")
+		return True
+	return False
+
 def create_callback_function(command, action):
 	def callback(client: Client, user_data, message: MQTTMessage):
+		if is_stale_command(message):
+			return
 		try:
 			mqtt_trigger_log({"Command": f"HA Override {command}"})
 			logging.info(f"{command} triggered from HomeAssistant")
@@ -549,6 +690,24 @@ mqtt_buttons = [
 	("gate-release_stop", "RELEASE STOP", lambda: gate.releaseStop()),
 	("gate-person-open", "PERSON OPEN", lambda: gate.personOpen()),
 ]
+
+# HA cover (device_class gate) payload -> (command label, action). Cover STOP is a momentary pulse;
+# the latched STOP / RELEASE STOP stay on their buttons.
+cover_commands = {
+	"OPEN": ("COVER OPEN", lambda: gate.open()),
+	"CLOSE": ("COVER CLOSE", lambda: gate.close()),
+	"STOP": ("COVER STOP", lambda: gate.pulseStop()),
+}
+
+def cover_callback(client: Client, user_data, message: MQTTMessage):
+	if is_stale_command(message):
+		return
+	payload = message.payload.decode(errors="replace").strip().upper()
+	if payload not in cover_commands:
+		logging.warning(f"Unknown gate cover command: {payload!r}")
+		return
+	command, action = cover_commands[payload]
+	create_callback_function(command, action)(client, user_data, message)
 
 def mqtt_create_entities(mqtt_settings, device_info):
 	'''Create/refresh all HA entities. Each entity is independent so one failure does not block the rest.'''
@@ -595,6 +754,15 @@ def mqtt_create_entities(mqtt_settings, device_info):
 			reed.publish()
 		except Exception as error:
 			logging.warning(f"Failed to set up MQTT {reed.name} sensor: {error}")
+
+	try:
+		# native gate cover: Open/Stop/Close plus open/opening/closing/closed state (retained)
+		info = CoverInfo(name=entity_id("gate"), unique_id=entity_id("gate"), device_class="gate", device=device_info)
+		cover = Cover(Settings(mqtt=mqtt_settings, entity=info), cover_callback, retain=True)
+		cover.write_config()
+		gatePos.attach(cover)
+	except Exception as error:
+		logging.warning(f"Failed to set up MQTT gate cover: {error}")
 
 def mqtt_start():
 	'''Start the background MQTT connection. Returns immediately; never raises.'''
@@ -684,7 +852,7 @@ if __name__ == '__main__' :
 		'''
 		Setup gate object
 		'''
-		gate = gate("gate1", {"open": O_PIN, "close": C_PIN, "stop": S_PIN}, reed=gateReed)
+		gate = gate("gate1", {"open": O_PIN, "close": C_PIN, "stop": S_PIN}, reed=gateReed, position=gatePos)
 
 		'''
 		Start MQTT in the background (optional, never blocks keypads)
